@@ -132,7 +132,7 @@ function BusinessPage() {
             Recent reports
           </h2>
           <div className="space-y-2">
-            {business.reports.map((r) => (
+            {business.reports.map((r: (typeof business.reports)[number]) => (
               <div
                 key={r.id}
                 className="flex items-center justify-between rounded-2xl border border-border bg-surface p-3"
