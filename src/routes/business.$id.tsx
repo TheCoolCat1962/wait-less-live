@@ -163,7 +163,9 @@ function BusinessPage() {
               <MapPin className="mt-0.5 size-4 shrink-0 text-brand" />
               <div className="min-w-0">
                 <p className="font-semibold">{business.address}</p>
-                <p className="text-xs text-muted-foreground">{business.city}</p>
+                <p className="text-xs text-muted-foreground">
+                  {business.city}, {business.state} {business.zip}
+                </p>
               </div>
             </div>
             <div className="flex items-start gap-3">

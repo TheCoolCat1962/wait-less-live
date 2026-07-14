@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ReportSheetProvider } from "../components/queueless/ReportSheetContext";
+import { LocationProvider } from "../lib/location";
 
 function NotFoundComponent() {
   return (
@@ -129,10 +130,12 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ReportSheetProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-      </ReportSheetProvider>
+      <LocationProvider>
+        <ReportSheetProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+        </ReportSheetProvider>
+      </LocationProvider>
     </QueryClientProvider>
   );
 }
