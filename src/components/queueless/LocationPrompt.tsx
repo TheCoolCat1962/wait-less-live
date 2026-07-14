@@ -8,7 +8,7 @@ export function LocationPrompt() {
   const [showManual, setShowManual] = useState(false);
   const busy = status === "prompting";
 
-  const submit = (e: React.FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
     setManualLocation(query);
   };
