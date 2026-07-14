@@ -1,16 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { MapPin, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
-import { BUSINESSES } from "@/lib/queueless-data";
+import { LocationPrompt } from "@/components/queueless/LocationPrompt";
+import { BUSINESSES, distanceMiles } from "@/lib/queueless-data";
+import { useLocation } from "@/lib/location";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
 function HomePage() {
-  const sorted = [...BUSINESSES].sort((a, b) => a.distanceMi - b.distanceMi);
-  const quick = sorted.filter((b) => b.currentMinutes <= 10).slice(0, 3);
+  const { status, location, clear } = useLocation();
+
+  const sorted = useMemo(() => {
+    if (!location) return [];
+    return BUSINESSES.map((b) => ({
+      business: b,
+      distanceMi: distanceMiles(location.coords, { lat: b.lat, lng: b.lng }),
+    })).sort((a, b) => a.distanceMi - b.distanceMi);
+  }, [location]);
+
+  const nearby = sorted.slice(0, 20);
+  const quick = nearby.filter((x) => x.business.currentMinutes <= 10).slice(0, 3);
+
+  const showPrompt = status === "idle" || status === "error" || status === "prompting";
 
   return (
     <AppShell>
@@ -30,63 +45,84 @@ function HomePage() {
         </div>
         <div className="flex items-center gap-2 rounded-xl bg-surface-muted px-3 py-2.5 text-sm">
           <MapPin className="size-4 text-brand" />
-          <span className="min-w-0 truncate font-semibold">Spadina & Richmond</span>
-          <button className="ml-auto text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            Change
-          </button>
+          <span className="min-w-0 truncate font-semibold">
+            {location?.label ?? "Set your location"}
+          </span>
+          {location && (
+            <button
+              onClick={clear}
+              className="ml-auto text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+            >
+              Change
+            </button>
+          )}
         </div>
       </header>
 
-      <main className="space-y-6 px-5 py-6">
-        {quick.length > 0 && (
+      {location ? (
+        <main className="space-y-6 px-5 py-6">
+          {quick.length > 0 && (
+            <section>
+              <div className="mb-2 flex items-center gap-1.5">
+                <Sparkles className="size-3.5 text-safe" />
+                <h2 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                  No wait right now
+                </h2>
+              </div>
+              <div className="flex snap-x gap-3 overflow-x-auto pb-2 -mx-5 px-5">
+                {quick.map(({ business: b, distanceMi }) => (
+                  <a
+                    key={b.id}
+                    href={`/business/${b.id}`}
+                    className="min-w-[62%] snap-start rounded-2xl border border-safe/25 bg-safe/5 p-4"
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-xl">{b.emoji}</span>
+                      <span className="truncate font-bold text-foreground">
+                        {b.name}
+                      </span>
+                    </div>
+                    <p className="text-[11px] uppercase tracking-wider text-safe">
+                      {b.currentMinutes} min · {distanceMi.toFixed(1)} mi
+                    </p>
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section>
-            <div className="mb-2 flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-safe" />
-              <h2 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                No wait right now
-              </h2>
+            <div className="mb-3 flex items-baseline justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Nearby locations
+                </p>
+                <h2 className="text-lg font-extrabold">Live wait times</h2>
+              </div>
+              <span className="text-[11px] font-semibold text-muted-foreground">
+                {nearby.length} places
+              </span>
             </div>
-            <div className="flex snap-x gap-3 overflow-x-auto pb-2 -mx-5 px-5">
-              {quick.map((b) => (
-                <a
-                  key={b.id}
-                  href={`/business/${b.id}`}
-                  className="min-w-[62%] snap-start rounded-2xl border border-safe/25 bg-safe/5 p-4"
-                >
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="text-xl">{b.emoji}</span>
-                    <span className="truncate font-bold text-foreground">
-                      {b.name}
-                    </span>
-                  </div>
-                  <p className="text-[11px] uppercase tracking-wider text-safe">
-                    {b.currentMinutes} min · {b.distanceMi.toFixed(1)} mi
-                  </p>
-                </a>
+            <div className="space-y-3">
+              {nearby.map(({ business, distanceMi }) => (
+                <BusinessCard
+                  key={business.id}
+                  business={business}
+                  distanceMi={distanceMi}
+                />
               ))}
             </div>
           </section>
-        )}
+        </main>
+      ) : (
+        <main className="px-5 py-16 text-center">
+          <p className="text-sm text-muted-foreground">
+            Share your location to see live wait times at nearby US businesses.
+          </p>
+        </main>
+      )}
 
-        <section>
-          <div className="mb-3 flex items-baseline justify-between">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Nearby locations
-              </p>
-              <h2 className="text-lg font-extrabold">Live wait times</h2>
-            </div>
-            <span className="text-[11px] font-semibold text-muted-foreground">
-              {sorted.length} places
-            </span>
-          </div>
-          <div className="space-y-3">
-            {sorted.map((b) => (
-              <BusinessCard key={b.id} business={b} />
-            ))}
-          </div>
-        </section>
-      </main>
+      {showPrompt && <LocationPrompt />}
     </AppShell>
   );
 }

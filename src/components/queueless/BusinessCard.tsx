@@ -5,7 +5,13 @@ import { formatUpdated } from "@/lib/queueless-data";
 import { WaitBadge } from "./WaitBadge";
 import { useFavorites } from "@/lib/favorites";
 
-export function BusinessCard({ business }: { business: Business }) {
+export function BusinessCard({
+  business,
+  distanceMi,
+}: {
+  business: Business;
+  distanceMi?: number;
+}) {
   const { has, toggle } = useFavorites();
   const fav = has(business.id);
   return (
@@ -36,7 +42,10 @@ export function BusinessCard({ business }: { business: Business }) {
             </button>
           </div>
           <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            {business.category} · {business.distanceMi.toFixed(1)} mi
+            {business.category}
+            {typeof distanceMi === "number"
+              ? ` · ${distanceMi.toFixed(1)} mi`
+              : ` · ${business.city}, ${business.state}`}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <WaitBadge minutes={business.currentMinutes} />
