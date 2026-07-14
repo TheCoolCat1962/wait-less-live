@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { MapPin, Loader2, Search } from "lucide-react";
 import { useLocation } from "@/lib/location";
 
