@@ -1,19 +1,18 @@
 import { Link } from "@tanstack/react-router";
 import { Star } from "lucide-react";
-import type { Business } from "@/lib/queueless-data";
-import { formatUpdated } from "@/lib/queueless-data";
+import {
+  type BusinessWithWait,
+  emojiForCategory,
+  formatUpdated,
+  toneFromMinutes,
+} from "@/lib/queueless-data";
 import { WaitBadge } from "./WaitBadge";
 import { useFavorites } from "@/lib/favorites";
 
-export function BusinessCard({
-  business,
-  distanceMi,
-}: {
-  business: Business;
-  distanceMi?: number;
-}) {
+export function BusinessCard({ business }: { business: BusinessWithWait }) {
   const { has, toggle } = useFavorites();
   const fav = has(business.id);
+  const tone = toneFromMinutes(business.currentMinutes);
   return (
     <Link
       to="/business/$id"
@@ -22,7 +21,7 @@ export function BusinessCard({
     >
       <div className="flex gap-4">
         <div className="grid size-16 shrink-0 place-items-center rounded-xl bg-surface-muted text-2xl">
-          <span aria-hidden>{business.emoji}</span>
+          <span aria-hidden>{emojiForCategory(business.category)}</span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
@@ -36,26 +35,40 @@ export function BusinessCard({
               aria-label={fav ? "Remove favorite" : "Add favorite"}
               className="shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:text-brand"
             >
-              <Star
-                className={`size-4 ${fav ? "fill-brand text-brand" : ""}`}
-              />
+              <Star className={`size-4 ${fav ? "fill-brand text-brand" : ""}`} />
             </button>
           </div>
           <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             {business.category}
-            {typeof distanceMi === "number"
-              ? ` · ${distanceMi.toFixed(1)} mi`
-              : ` · ${business.city}, ${business.state}`}
+            {typeof business.distanceMi === "number"
+              ? ` · ${business.distanceMi.toFixed(1)} mi`
+              : business.city
+                ? ` · ${business.city}${business.state ? ", " + business.state : ""}`
+                : ""}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <WaitBadge minutes={business.currentMinutes} />
-            <span className="text-[10px] italic text-muted-foreground">
-              {formatUpdated(business.updatedMinutesAgo)}
-            </span>
+            {business.currentMinutes != null ? (
+              <>
+                <WaitBadge minutes={business.currentMinutes} />
+                <span className="text-[10px] italic text-muted-foreground">
+                  {formatUpdated(business.updatedMinutesAgo)}
+                </span>
+              </>
+            ) : (
+              <span
+                className={`rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ${
+                  tone === "neutral" ? "" : ""
+                }`}
+              >
+                No reports yet · Be first
+              </span>
+            )}
           </div>
-          <p className="mt-2 line-clamp-1 text-xs font-medium text-muted-foreground">
-            {business.blurb}
-          </p>
+          {business.address && (
+            <p className="mt-2 line-clamp-1 text-xs font-medium text-muted-foreground">
+              {business.address}
+            </p>
+          )}
         </div>
       </div>
     </Link>

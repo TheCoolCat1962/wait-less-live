@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, Loader2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReportSheet } from "./ReportSheetContext";
-import { BUSINESSES, WAIT_OPTIONS, type WaitLevel } from "@/lib/queueless-data";
+import { WAIT_OPTIONS, type WaitLevel, getReporterKey } from "@/lib/queueless-data";
+import { fetchNearbyBusinesses, submitWaitReport } from "@/lib/queueless.functions";
+import { useLocation } from "@/lib/location";
 
 const toneClasses: Record<string, string> = {
   safe: "border-safe/40 bg-safe/10 text-safe",
@@ -11,14 +14,28 @@ const toneClasses: Record<string, string> = {
 
 export function ReportSheet() {
   const { isOpen, businessId, close } = useReportSheet();
+  const { location } = useLocation();
+  const qc = useQueryClient();
   const [selected, setSelected] = useState<WaitLevel | null>(null);
   const [selectedBiz, setSelectedBiz] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const nearby = useQuery({
+    queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
+    enabled: isOpen && !!location && !businessId,
+    queryFn: () =>
+      fetchNearbyBusinesses({
+        data: { lat: location!.coords.lat, lng: location!.coords.lng, radiusMiles: 25 },
+      }),
+    staleTime: 60_000,
+  });
 
   const activeBizId = businessId ?? selectedBiz;
   const business = useMemo(
-    () => BUSINESSES.find((b) => b.id === activeBizId),
-    [activeBizId],
+    () => (nearby.data ?? []).find((b) => b.id === activeBizId),
+    [nearby.data, activeBizId],
   );
 
   useEffect(() => {
@@ -26,6 +43,7 @@ export function ReportSheet() {
       setSelected(null);
       setSubmitted(false);
       setSelectedBiz(null);
+      setError(null);
     }
   }, [isOpen, businessId]);
 
@@ -38,12 +56,30 @@ export function ReportSheet() {
 
   if (!isOpen) return null;
 
-  const canSubmit = business && selected;
+  const canSubmit = !!activeBizId && !!selected && !submitting;
 
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    setSubmitted(true);
-    setTimeout(() => close(), 1200);
+  const handleSubmit = async () => {
+    if (!canSubmit || !activeBizId || !selected) return;
+    const opt = WAIT_OPTIONS.find((o) => o.level === selected)!;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitWaitReport({
+        data: {
+          businessId: activeBizId,
+          minutes: opt.minutes,
+          reporterKey: getReporterKey(),
+        },
+      });
+      setSubmitted(true);
+      qc.invalidateQueries({ queryKey: ["nearby"] });
+      qc.invalidateQueries({ queryKey: ["business", activeBizId] });
+      setTimeout(() => close(), 1200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't submit report.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -73,7 +109,7 @@ export function ReportSheet() {
           </button>
         </div>
 
-        {!business && (
+        {!businessId && (
           <div className="mb-4">
             <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Pick a place
@@ -83,8 +119,10 @@ export function ReportSheet() {
               onChange={(e) => setSelectedBiz(e.target.value || null)}
               className="w-full rounded-xl border border-border bg-surface-muted px-3 py-3 text-sm font-medium focus:border-brand focus:outline-none"
             >
-              <option value="">Select a business…</option>
-              {BUSINESSES.map((b) => (
+              <option value="">
+                {nearby.isLoading ? "Loading nearby…" : "Select a business…"}
+              </option>
+              {(nearby.data ?? []).map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name} — {b.category}
                 </option>
@@ -100,7 +138,7 @@ export function ReportSheet() {
             </div>
             <p className="mt-4 text-base font-bold">Thanks — your report is live.</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              You just helped {Math.floor(Math.random() * 40) + 10} nearby people.
+              You just helped everyone else save time.
             </p>
           </div>
         ) : (
@@ -125,9 +163,7 @@ export function ReportSheet() {
                     </div>
                     <div
                       className={`size-5 rounded-full border-2 ${
-                        active
-                          ? "border-current bg-current"
-                          : "border-border"
+                        active ? "border-current bg-current" : "border-border"
                       }`}
                     />
                   </button>
@@ -135,13 +171,20 @@ export function ReportSheet() {
               })}
             </div>
 
+            {error && (
+              <p className="mt-4 rounded-xl bg-danger/10 px-3 py-2 text-xs font-semibold text-danger">
+                {error}
+              </p>
+            )}
+
             <button
               type="button"
               disabled={!canSubmit}
               onClick={handleSubmit}
-              className="mt-6 w-full rounded-2xl bg-brand py-4 text-base font-bold text-brand-foreground shadow-lg shadow-brand/30 transition disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand py-4 text-base font-bold text-brand-foreground shadow-lg shadow-brand/30 transition disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
             >
-              Submit report
+              {submitting && <Loader2 className="size-4 animate-spin" />}
+              {submitting ? "Submitting…" : "Submit report"}
             </button>
             <p className="mt-3 text-center text-[11px] text-muted-foreground">
               Accurate reports raise your reputation.
