@@ -323,7 +323,7 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
       : null;
 
     return {
-      ...(business as Record<string, unknown>),
+      ...business,
       currentMinutes: avg,
       updatedMinutesAgo,
       contributors: recent.length,

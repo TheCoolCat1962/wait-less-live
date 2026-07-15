@@ -19,7 +19,7 @@ function FavoritesPage() {
     queryFn: () => getBusinessesByIds({ data: { ids } }),
   });
 
-  const favs: BusinessWithWait[] = (q.data ?? []).map((b) => ({
+  const favs: BusinessWithWait[] = (q.data ?? []).map((b: any) => ({
     ...b,
     currentMinutes: null,
     updatedMinutesAgo: null,
