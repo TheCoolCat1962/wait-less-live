@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 function getSupabase() {
   const url = process.env.SUPABASE_URL!;
   const key = process.env.SUPABASE_PUBLISHABLE_KEY!;
+  // Cast to any so newly-added tables (not yet in generated types) are usable.
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: {
@@ -19,7 +20,7 @@ function getSupabase() {
         return fetch(input, { ...init, headers: h });
       },
     },
-  });
+  }) as any;
 }
 
 // ---------------------------------------------------------------------------
