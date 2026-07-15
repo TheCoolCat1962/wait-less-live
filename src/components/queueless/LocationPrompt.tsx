@@ -82,7 +82,8 @@ export function LocationPrompt() {
         )}
 
         <p className="mt-5 text-center text-[11px] text-muted-foreground">
-          We only use your location to find nearby businesses.
+          Your location is never shared. It is only used to find businesses near
+          you.
         </p>
       </div>
     </div>
