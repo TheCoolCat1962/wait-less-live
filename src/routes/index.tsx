@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
-import { MapPin, Sparkles } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { MapPin, Sparkles, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
 import { LocationPrompt } from "@/components/queueless/LocationPrompt";
-import { BUSINESSES, distanceMiles } from "@/lib/queueless-data";
+import { distanceMiles, type BusinessWithWait } from "@/lib/queueless-data";
 import { useLocation } from "@/lib/location";
+import { fetchNearbyBusinesses } from "@/lib/queueless.functions";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
@@ -14,18 +15,31 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const { status, location, clear } = useLocation();
 
-  const sorted = useMemo(() => {
-    if (!location) return [];
-    return BUSINESSES.map((b) => ({
-      business: b,
-      distanceMi: distanceMiles(location.coords, { lat: b.lat, lng: b.lng }),
-    })).sort((a, b) => a.distanceMi - b.distanceMi);
-  }, [location]);
+  const nearbyQuery = useQuery({
+    queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
+    enabled: !!location,
+    queryFn: () =>
+      fetchNearbyBusinesses({
+        data: { lat: location!.coords.lat, lng: location!.coords.lng, radiusMiles: 25 },
+      }),
+    staleTime: 60_000,
+  });
 
-  const nearby = sorted.slice(0, 20);
-  const quick = nearby.filter((x) => x.business.currentMinutes <= 10).slice(0, 3);
+  const sorted: BusinessWithWait[] = (nearbyQuery.data ?? [])
+    .map((b) => ({
+      ...b,
+      distanceMi: location
+        ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
+        : undefined,
+    }))
+    .sort((a, b) => (a.distanceMi ?? 0) - (b.distanceMi ?? 0));
 
-  const showPrompt = status === "idle" || status === "error" || status === "prompting";
+  const quick = sorted
+    .filter((b) => b.currentMinutes != null && b.currentMinutes <= 10)
+    .slice(0, 3);
+
+  const showPrompt =
+    status === "idle" || status === "error" || (status === "prompting" && !location);
 
   return (
     <AppShell>
@@ -61,6 +75,18 @@ function HomePage() {
 
       {location ? (
         <main className="space-y-6 px-5 py-6">
+          {nearbyQuery.isLoading && (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Finding nearby places…
+            </div>
+          )}
+          {nearbyQuery.isError && (
+            <div className="rounded-2xl bg-danger/10 p-4 text-sm font-semibold text-danger">
+              Couldn't load nearby places. {(nearbyQuery.error as Error)?.message}
+            </div>
+          )}
+
           {quick.length > 0 && (
             <section>
               <div className="mb-2 flex items-center gap-1.5">
@@ -70,20 +96,17 @@ function HomePage() {
                 </h2>
               </div>
               <div className="flex snap-x gap-3 overflow-x-auto pb-2 -mx-5 px-5">
-                {quick.map(({ business: b, distanceMi }) => (
+                {quick.map((b) => (
                   <a
                     key={b.id}
                     href={`/business/${b.id}`}
                     className="min-w-[62%] snap-start rounded-2xl border border-safe/25 bg-safe/5 p-4"
                   >
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className="text-xl">{b.emoji}</span>
-                      <span className="truncate font-bold text-foreground">
-                        {b.name}
-                      </span>
+                    <div className="mb-2 truncate font-bold text-foreground">
+                      {b.name}
                     </div>
                     <p className="text-[11px] uppercase tracking-wider text-safe">
-                      {b.currentMinutes} min · {distanceMi.toFixed(1)} mi
+                      {b.currentMinutes} min · {b.distanceMi?.toFixed(1)} mi
                     </p>
                   </a>
                 ))}
@@ -91,28 +114,32 @@ function HomePage() {
             </section>
           )}
 
-          <section>
-            <div className="mb-3 flex items-baseline justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  Nearby locations
-                </p>
-                <h2 className="text-lg font-extrabold">Live wait times</h2>
+          {sorted.length > 0 && (
+            <section>
+              <div className="mb-3 flex items-baseline justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Nearby locations
+                  </p>
+                  <h2 className="text-lg font-extrabold">Live wait times</h2>
+                </div>
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  {sorted.length} places
+                </span>
               </div>
-              <span className="text-[11px] font-semibold text-muted-foreground">
-                {nearby.length} places
-              </span>
-            </div>
-            <div className="space-y-3">
-              {nearby.map(({ business, distanceMi }) => (
-                <BusinessCard
-                  key={business.id}
-                  business={business}
-                  distanceMi={distanceMi}
-                />
-              ))}
-            </div>
-          </section>
+              <div className="space-y-3">
+                {sorted.map((business) => (
+                  <BusinessCard key={business.id} business={business} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!nearbyQuery.isLoading && sorted.length === 0 && !nearbyQuery.isError && (
+            <p className="mt-16 text-center text-sm text-muted-foreground">
+              No businesses found within 25 miles. Try a different location.
+            </p>
+          )}
         </main>
       ) : (
         <main className="px-5 py-16 text-center">

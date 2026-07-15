@@ -8,9 +8,9 @@ export function LocationPrompt() {
   const [showManual, setShowManual] = useState(false);
   const busy = status === "prompting";
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setManualLocation(query);
+    await setManualLocation(query);
   };
 
   return (
@@ -25,7 +25,7 @@ export function LocationPrompt() {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           QueueLess shows live wait times at stores across the US. Share your
-          location or enter a ZIP code or city.
+          location or enter a ZIP code, city, or address.
         </p>
 
         <button
@@ -36,7 +36,7 @@ export function LocationPrompt() {
         >
           {busy ? (
             <>
-              <Loader2 className="size-4 animate-spin" /> Requesting…
+              <Loader2 className="size-4 animate-spin" /> Working…
             </>
           ) : (
             <>
@@ -50,7 +50,7 @@ export function LocationPrompt() {
           onClick={() => setShowManual((v) => !v)}
           className="mt-3 w-full text-center text-sm font-bold text-brand"
         >
-          {showManual ? "Hide manual entry" : "Enter ZIP code or city instead"}
+          {showManual ? "Hide manual entry" : "Enter ZIP code, city, or address"}
         </button>
 
         {showManual && (
@@ -61,16 +61,16 @@ export function LocationPrompt() {
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. 10001 or Chicago"
+                placeholder="e.g. 10001, Chicago, or 1 Main St"
                 className="w-full rounded-xl bg-surface-muted py-3 pl-10 pr-4 text-sm font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
             <button
               type="submit"
-              disabled={!query.trim()}
+              disabled={!query.trim() || busy}
               className="mt-3 w-full rounded-2xl bg-foreground py-3.5 text-sm font-bold text-background disabled:opacity-40"
             >
-              Show nearby places
+              {busy ? "Searching…" : "Show nearby places"}
             </button>
           </form>
         )}

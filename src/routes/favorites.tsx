@@ -1,9 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Star } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Star, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
-import { BUSINESSES } from "@/lib/queueless-data";
 import { useFavorites } from "@/lib/favorites";
+import { getBusinessesByIds } from "@/lib/queueless.functions";
+import type { BusinessWithWait } from "@/lib/queueless-data";
 
 export const Route = createFileRoute("/favorites")({
   component: FavoritesPage,
@@ -11,7 +13,18 @@ export const Route = createFileRoute("/favorites")({
 
 function FavoritesPage() {
   const { ids, ready } = useFavorites();
-  const favs = BUSINESSES.filter((b) => ids.includes(b.id));
+  const q = useQuery({
+    queryKey: ["favorites", ids.join(",")],
+    enabled: ready && ids.length > 0,
+    queryFn: () => getBusinessesByIds({ data: { ids } }),
+  });
+
+  const favs: BusinessWithWait[] = (q.data ?? []).map((b: any) => ({
+    ...b,
+    currentMinutes: null,
+    updatedMinutesAgo: null,
+    contributors: 0,
+  }));
 
   return (
     <AppShell>
@@ -23,7 +36,7 @@ function FavoritesPage() {
       </header>
 
       <main className="space-y-3 px-5 py-6">
-        {!ready ? null : favs.length === 0 ? (
+        {!ready ? null : ids.length === 0 ? (
           <div className="mt-16 flex flex-col items-center px-6 text-center">
             <div className="grid size-14 place-items-center rounded-2xl bg-brand/10 text-brand">
               <Star className="size-6" />
@@ -38,6 +51,10 @@ function FavoritesPage() {
             >
               Browse nearby
             </Link>
+          </div>
+        ) : q.isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading…
           </div>
         ) : (
           favs.map((b) => <BusinessCard key={b.id} business={b} />)

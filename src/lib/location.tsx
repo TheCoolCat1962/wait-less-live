@@ -6,7 +6,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { resolveLocationQuery, type Coords } from "./queueless-data";
+import { geocodeQuery } from "./queueless.functions";
+import type { Coords } from "./queueless-data";
 
 export type LocationSource = "gps" | "manual";
 
@@ -17,18 +18,18 @@ export interface UserLocation {
 }
 
 export type LocationStatus =
-  | "loading" // reading from storage
-  | "idle" // no location yet, waiting for user action
-  | "prompting" // asking browser for permission
-  | "ready" // have coords
-  | "error"; // last request failed
+  | "loading"
+  | "idle"
+  | "prompting"
+  | "ready"
+  | "error";
 
 interface LocationContextValue {
   status: LocationStatus;
   location: UserLocation | null;
   error: string | null;
   requestGeolocation: () => void;
-  setManualLocation: (query: string) => boolean;
+  setManualLocation: (query: string) => Promise<boolean>;
   clear: () => void;
 }
 
@@ -97,22 +98,25 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const setManualLocation = useCallback((query: string) => {
-    const resolved = resolveLocationQuery(query);
-    if (!resolved) {
-      setError("We don't recognize that ZIP or city yet. Try a major US city.");
+  const setManualLocation = useCallback(async (query: string) => {
+    setStatus("prompting");
+    setError(null);
+    try {
+      const resolved = await geocodeQuery({ data: { query } });
+      const loc: UserLocation = {
+        coords: { lat: resolved.lat, lng: resolved.lng },
+        label: resolved.label,
+        source: "manual",
+      };
+      writeStored(loc);
+      setLocation(loc);
+      setStatus("ready");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't find that location.");
+      setStatus("idle");
       return false;
     }
-    const loc: UserLocation = {
-      coords: resolved.coords,
-      label: resolved.label,
-      source: "manual",
-    };
-    writeStored(loc);
-    setLocation(loc);
-    setStatus("ready");
-    setError(null);
-    return true;
   }, []);
 
   const clear = useCallback(() => {
