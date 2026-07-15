@@ -228,22 +228,30 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
 
     // Read back stored ids (needed to attach wait aggregates)
     const placeIds = rows.map((r) => r.google_place_id);
-    const { data: stored, error: readErr } = await supabase
+    const { data: storedRaw, error: readErr } = await supabase
       .from("businesses")
       .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, phone")
       .in("google_place_id", placeIds);
     if (readErr) throw new Error(readErr.message);
+    const stored = (storedRaw ?? []) as Array<{
+      id: string; google_place_id: string; name: string;
+      address: string | null; city: string | null; state: string | null; zip: string | null;
+      lat: number; lng: number; category: string; phone: string | null;
+    }>;
 
-    const ids = (stored ?? []).map((b) => b.id);
-    const { data: reports } = await supabase
+    const ids = stored.map((b) => b.id);
+    const { data: reportsRaw } = await supabase
       .from("wait_reports")
       .select("business_id, minutes, created_at")
       .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
       .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString())
       .order("created_at", { ascending: false });
+    const reports = (reportsRaw ?? []) as Array<{
+      business_id: string; minutes: number; created_at: string;
+    }>;
 
     const byBiz = new Map<string, { minutes: number[]; latest: string; count: number }>();
-    for (const r of reports ?? []) {
+    for (const r of reports) {
       const agg = byBiz.get(r.business_id) ?? { minutes: [], latest: r.created_at, count: 0 };
       agg.minutes.push(r.minutes);
       if (r.created_at > agg.latest) agg.latest = r.created_at;
@@ -251,7 +259,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       byBiz.set(r.business_id, agg);
     }
 
-    return (stored ?? []).map((b) => {
+    return stored.map((b) => {
       const agg = byBiz.get(b.id);
       const avg = agg
         ? Math.round(agg.minutes.reduce((s, x) => s + x, 0) / agg.minutes.length)
