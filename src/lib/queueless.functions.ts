@@ -295,31 +295,34 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!business) throw new Error("Business not found");
 
-    const { data: reports } = await supabase
+    const { data: reportsRaw } = await supabase
       .from("wait_reports")
       .select("id, minutes, created_at, reporter_key")
       .eq("business_id", data.id)
       .order("created_at", { ascending: false })
       .limit(20);
+    const reports = (reportsRaw ?? []) as Array<{
+      id: string; minutes: number; created_at: string; reporter_key: string | null;
+    }>;
 
-    const recent = (reports ?? []).filter(
+    const recent = reports.filter(
       (r) => Date.now() - new Date(r.created_at).getTime() <= 60 * 60 * 1000,
     );
     const avg =
       recent.length > 0
         ? Math.round(recent.reduce((s, r) => s + r.minutes, 0) / recent.length)
         : null;
-    const latest = reports?.[0];
+    const latest = reports[0];
     const updatedMinutesAgo = latest
       ? Math.max(0, (Date.now() - new Date(latest.created_at).getTime()) / 60_000)
       : null;
 
     return {
-      ...business,
+      ...(business as Record<string, unknown>),
       currentMinutes: avg,
       updatedMinutesAgo,
       contributors: recent.length,
-      reports: (reports ?? []).map((r) => ({
+      reports: reports.map((r) => ({
         id: r.id,
         minutes: r.minutes,
         minutesAgo: Math.max(0, (Date.now() - new Date(r.created_at).getTime()) / 60_000),
