@@ -14,7 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      businesses: {
+        Row: {
+          address: string | null
+          category: string | null
+          city: string | null
+          created_at: string
+          google_place_id: string
+          id: string
+          lat: number
+          lng: number
+          name: string
+          phone: string | null
+          state: string | null
+          updated_at: string
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          category?: string | null
+          city?: string | null
+          created_at?: string
+          google_place_id: string
+          id?: string
+          lat: number
+          lng: number
+          name: string
+          phone?: string | null
+          state?: string | null
+          updated_at?: string
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          category?: string | null
+          city?: string | null
+          created_at?: string
+          google_place_id?: string
+          id?: string
+          lat?: number
+          lng?: number
+          name?: string
+          phone?: string | null
+          state?: string | null
+          updated_at?: string
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      wait_reports: {
+        Row: {
+          business_id: string
+          created_at: string
+          id: string
+          minutes: number
+          reporter_key: string | null
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          id?: string
+          minutes: number
+          reporter_key?: string | null
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          id?: string
+          minutes?: number
+          reporter_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wait_reports_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
