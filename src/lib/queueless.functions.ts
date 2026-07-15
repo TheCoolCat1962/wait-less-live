@@ -287,13 +287,18 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const supabase = getSupabase();
-    const { data: business, error } = await supabase
+    const { data: businessRaw, error } = await supabase
       .from("businesses")
       .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, phone")
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!business) throw new Error("Business not found");
+    if (!businessRaw) throw new Error("Business not found");
+    const business = businessRaw as {
+      id: string; google_place_id: string; name: string;
+      address: string | null; city: string | null; state: string | null; zip: string | null;
+      lat: number; lng: number; category: string; phone: string | null;
+    };
 
     const { data: reportsRaw } = await supabase
       .from("wait_reports")
