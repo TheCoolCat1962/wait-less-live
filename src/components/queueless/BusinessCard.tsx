@@ -1,18 +1,20 @@
 import { Link } from "@tanstack/react-router";
-import { Star } from "lucide-react";
+import { Star, Plus } from "lucide-react";
 import {
   type BusinessWithWait,
-  emojiForCategory,
+  emojiForBusiness,
   formatUpdated,
-  toneFromMinutes,
+  trendLabel,
 } from "@/lib/queueless-data";
 import { WaitBadge } from "./WaitBadge";
 import { useFavorites } from "@/lib/favorites";
+import { useReportSheet } from "./ReportSheetContext";
 
 export function BusinessCard({ business }: { business: BusinessWithWait }) {
   const { has, toggle } = useFavorites();
+  const { open } = useReportSheet();
   const fav = has(business.id);
-  const tone = toneFromMinutes(business.currentMinutes);
+  const trend = business.currentMinutes != null ? trendLabel(business.trend) : null;
   return (
     <Link
       to="/business/$id"
@@ -20,8 +22,17 @@ export function BusinessCard({ business }: { business: BusinessWithWait }) {
       className="group block rounded-2xl border border-border bg-surface p-4 shadow-sm transition-transform active:scale-[0.99]"
     >
       <div className="flex gap-4">
-        <div className="grid size-16 shrink-0 place-items-center rounded-xl bg-surface-muted text-2xl">
-          <span aria-hidden>{emojiForCategory(business.category)}</span>
+        <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-surface-muted text-2xl">
+          {business.logo_url ? (
+            <img
+              src={business.logo_url}
+              alt=""
+              className="size-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <span aria-hidden>{emojiForBusiness(business)}</span>
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
@@ -53,15 +64,23 @@ export function BusinessCard({ business }: { business: BusinessWithWait }) {
                 <span className="text-[10px] italic text-muted-foreground">
                   {formatUpdated(business.updatedMinutesAgo)}
                 </span>
+                {trend && (
+                  <span className={`text-[10px] font-bold ${trend.tone}`}>
+                    {trend.icon} {trend.label}
+                  </span>
+                )}
               </>
             ) : (
-              <span
-                className={`rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ${
-                  tone === "neutral" ? "" : ""
-                }`}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  open(business.id);
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-brand"
               >
-                No reports yet · Be first
-              </span>
+                <Plus className="size-3" /> Be first
+              </button>
             )}
           </div>
           {business.address && (

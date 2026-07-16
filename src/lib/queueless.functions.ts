@@ -7,7 +7,6 @@ import { createClient } from "@supabase/supabase-js";
 function getSupabase() {
   const url = process.env.SUPABASE_URL!;
   const key = process.env.SUPABASE_PUBLISHABLE_KEY!;
-  // Cast to any so newly-added tables (not yet in generated types) are usable.
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: {
@@ -31,9 +30,7 @@ const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_maps";
 function gwHeaders(extra?: Record<string, string>) {
   const lovableKey = process.env.LOVABLE_API_KEY;
   const gmKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!lovableKey || !gmKey) {
-    throw new Error("Google Maps connector is not configured.");
-  }
+  if (!lovableKey || !gmKey) throw new Error("Google Maps connector is not configured.");
   return {
     Authorization: `Bearer ${lovableKey}`,
     "X-Connection-Api-Key": gmKey,
@@ -54,7 +51,7 @@ async function handleGwError(res: Response) {
       }
       if (reason === "API_KEY_SERVICE_BLOCKED") {
         throw new Error(
-          "Google Maps server key does not allow this API. Add this API to the key's allowed-APIs list.",
+          "Google Maps server key does not allow this API. Add it to the key's allowed-APIs list.",
         );
       }
     } catch {}
@@ -96,41 +93,151 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
-// Category mapping from Google Place types → app-friendly label
+// Business type filtering — only places where wait times matter
 // ---------------------------------------------------------------------------
-const CATEGORY_MAP: Array<[string, string]> = [
-  ["supermarket", "Grocery"],
-  ["grocery_store", "Grocery"],
-  ["convenience_store", "Grocery"],
-  ["cafe", "Coffee"],
-  ["coffee_shop", "Coffee"],
-  ["pharmacy", "Pharmacy"],
-  ["drugstore", "Pharmacy"],
-  ["bank", "Bank"],
-  ["atm", "Bank"],
-  ["gym", "Gym"],
-  ["fitness_center", "Gym"],
-  ["local_government_office", "Government"],
-  ["city_hall", "Government"],
-  ["post_office", "Government"],
-  ["restaurant", "Restaurant"],
-  ["meal_takeaway", "Restaurant"],
-  ["fast_food_restaurant", "Restaurant"],
-  ["bar", "Restaurant"],
-  ["hospital", "Health"],
-  ["doctor", "Health"],
-  ["gas_station", "Gas"],
-  ["department_store", "Store"],
-  ["clothing_store", "Store"],
-  ["store", "Store"],
+// Google Places API (New) primary types we want to surface.
+const INCLUDED_TYPES = [
+  // Grocery / retail
+  "supermarket",
+  "grocery_store",
+  "convenience_store",
+  "department_store",
+  "discount_store",
+  "warehouse_store",
+  "wholesaler",
+  "clothing_store",
+  "shoe_store",
+  "shopping_mall",
+  "electronics_store",
+  "home_improvement_store",
+  "furniture_store",
+  "book_store",
+  // Coffee / food
+  "cafe",
+  "coffee_shop",
+  "restaurant",
+  "fast_food_restaurant",
+  "meal_takeaway",
+  "bakery",
+  "sandwich_shop",
+  "pizza_restaurant",
+  "hamburger_restaurant",
+  "ice_cream_shop",
+  "bar",
+  // Finance / civic
+  "bank",
+  "atm",
+  "post_office",
+  "local_government_office",
+  "city_hall",
+  "courthouse",
+  // Health
+  "hospital",
+  "pharmacy",
+  "drugstore",
+  "medical_lab",
+  // Travel
+  "airport",
+  "gas_station",
+  // Entertainment
+  "movie_theater",
+  "amusement_park",
+  // Fitness
+  "gym",
+  "fitness_center",
 ];
 
-function categoryFromTypes(types: string[] | undefined): string {
-  if (!types) return "Place";
-  for (const [key, label] of CATEGORY_MAP) {
-    if (types.includes(key)) return label;
+// Types we always want to hide even if Google returns them alongside allowed types.
+const EXCLUDED_TYPES_SET = new Set([
+  "lodging",
+  "hotel",
+  "motel",
+  "bed_and_breakfast",
+  "extended_stay_hotel",
+  "guest_house",
+  "resort_hotel",
+  "campground",
+  "rv_park",
+  "real_estate_agency",
+  "lawyer",
+  "accounting",
+  "insurance_agency",
+  "general_contractor",
+  "roofing_contractor",
+  "plumber",
+  "electrician",
+  "painter",
+  "moving_company",
+  "storage",
+  "farm",
+  "food_court", // usually inside malls, low signal
+]);
+
+// Category label + emoji for a given Place. Prefers primary_type.
+const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
+  supermarket: { label: "Grocery", emoji: "🛒" },
+  grocery_store: { label: "Grocery", emoji: "🛒" },
+  convenience_store: { label: "Convenience", emoji: "🏪" },
+  department_store: { label: "Department Store", emoji: "🏬" },
+  discount_store: { label: "Discount Store", emoji: "🏬" },
+  warehouse_store: { label: "Warehouse Club", emoji: "📦" },
+  wholesaler: { label: "Warehouse Club", emoji: "📦" },
+  clothing_store: { label: "Retail", emoji: "🛍️" },
+  shoe_store: { label: "Retail", emoji: "👟" },
+  shopping_mall: { label: "Mall", emoji: "🏬" },
+  electronics_store: { label: "Retail", emoji: "🔌" },
+  home_improvement_store: { label: "Home Improvement", emoji: "🔨" },
+  furniture_store: { label: "Retail", emoji: "🛋️" },
+  book_store: { label: "Retail", emoji: "📚" },
+
+  cafe: { label: "Coffee", emoji: "☕" },
+  coffee_shop: { label: "Coffee", emoji: "☕" },
+  restaurant: { label: "Restaurant", emoji: "🍽️" },
+  fast_food_restaurant: { label: "Fast Food", emoji: "🍔" },
+  meal_takeaway: { label: "Takeout", emoji: "🥡" },
+  bakery: { label: "Bakery", emoji: "🥐" },
+  sandwich_shop: { label: "Sandwiches", emoji: "🥪" },
+  pizza_restaurant: { label: "Pizza", emoji: "🍕" },
+  hamburger_restaurant: { label: "Burgers", emoji: "🍔" },
+  ice_cream_shop: { label: "Ice Cream", emoji: "🍦" },
+  bar: { label: "Bar", emoji: "🍺" },
+
+  bank: { label: "Bank", emoji: "🏦" },
+  atm: { label: "ATM", emoji: "🏧" },
+  post_office: { label: "Post Office", emoji: "📮" },
+  local_government_office: { label: "Government", emoji: "🪪" },
+  city_hall: { label: "Government", emoji: "🏛️" },
+  courthouse: { label: "Courthouse", emoji: "⚖️" },
+
+  hospital: { label: "Hospital", emoji: "🏥" },
+  pharmacy: { label: "Pharmacy", emoji: "💊" },
+  drugstore: { label: "Pharmacy", emoji: "💊" },
+  medical_lab: { label: "Urgent Care", emoji: "🩺" },
+
+  airport: { label: "Airport", emoji: "✈️" },
+  gas_station: { label: "Gas", emoji: "⛽" },
+
+  movie_theater: { label: "Movie Theater", emoji: "🎬" },
+  amusement_park: { label: "Theme Park", emoji: "🎢" },
+
+  gym: { label: "Gym", emoji: "🏋️" },
+  fitness_center: { label: "Gym", emoji: "🏋️" },
+};
+
+function pickCategory(primaryType: string | undefined, types: string[] | undefined) {
+  if (primaryType && CATEGORY_MAP[primaryType]) return { primary: primaryType, ...CATEGORY_MAP[primaryType] };
+  if (types) {
+    for (const t of types) {
+      if (CATEGORY_MAP[t]) return { primary: t, ...CATEGORY_MAP[t] };
+    }
   }
-  return "Place";
+  return { primary: primaryType ?? (types?.[0] ?? "place"), label: "Place", emoji: "📍" };
+}
+
+function isExcluded(primaryType: string | undefined, types: string[] | undefined) {
+  if (primaryType && EXCLUDED_TYPES_SET.has(primaryType)) return true;
+  if (types?.some((t) => EXCLUDED_TYPES_SET.has(t))) return true;
+  return false;
 }
 
 function pickAddressComponent(
@@ -141,6 +248,61 @@ function pickAddressComponent(
   if (!components) return null;
   const c = components.find((x) => x.types?.includes(type));
   return c ? ((short ? c.short_name : c.long_name) ?? null) : null;
+}
+
+function buildPhotoUrl(photoName: string | undefined): string | null {
+  if (!photoName) return null;
+  const browserKey = process.env.GOOGLE_MAPS_BROWSER_KEY;
+  if (!browserKey) return null;
+  // Browser key is authorized for Places API (New); safe to embed in <img src>.
+  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=128&skipHttpRedirect=false&key=${browserKey}`;
+}
+
+// ---------------------------------------------------------------------------
+// Live-wait aggregation helpers
+// ---------------------------------------------------------------------------
+type StoredReport = { minutes: number; created_at: string; source: string | null };
+
+// Weighted current wait: newer + timer reports weigh more; ignore obvious outliers.
+function aggregateReports(reports: StoredReport[]) {
+  if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, trend: "stable" as "up" | "down" | "stable" };
+
+  const now = Date.now();
+  // Only reports within the last 90 minutes count as "current".
+  const recent = reports.filter((r) => now - new Date(r.created_at).getTime() <= 90 * 60_000);
+  if (!recent.length) return { current: null, count: 0, latest: null, trend: "stable" as const };
+
+  // Outlier removal: drop values >2.5x the median.
+  const sortedMins = [...recent.map((r) => r.minutes)].sort((a, b) => a - b);
+  const median = sortedMins[Math.floor(sortedMins.length / 2)];
+  const kept = recent.filter((r) => median === 0 || r.minutes <= median * 2.5 + 5);
+
+  let weightSum = 0;
+  let weighted = 0;
+  for (const r of kept) {
+    const ageMin = Math.max(0, (now - new Date(r.created_at).getTime()) / 60_000);
+    // Recency weight: 1.0 at 0m, ~0.5 at 30m, ~0.1 at 90m
+    const recencyW = Math.exp(-ageMin / 30);
+    const sourceW = r.source === "timer" ? 1.5 : r.source === "exact" ? 1.2 : 1;
+    const w = recencyW * sourceW;
+    weighted += r.minutes * w;
+    weightSum += w;
+  }
+  const current = weightSum > 0 ? Math.round(weighted / weightSum) : null;
+
+  // Trend: compare avg of newest half vs older half (chronological).
+  const chrono = [...kept].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  let trend: "up" | "down" | "stable" = "stable";
+  if (chrono.length >= 3) {
+    const half = Math.floor(chrono.length / 2);
+    const oldAvg = chrono.slice(0, half).reduce((s, r) => s + r.minutes, 0) / half;
+    const newAvg = chrono.slice(-half).reduce((s, r) => s + r.minutes, 0) / half;
+    if (newAvg - oldAvg >= 4) trend = "up";
+    else if (oldAvg - newAvg >= 4) trend = "down";
+  }
+
+  const latest = kept.reduce((a, b) => (a.created_at > b.created_at ? a : b)).created_at;
+  return { current, count: kept.length, latest, trend };
 }
 
 // ---------------------------------------------------------------------------
@@ -159,17 +321,17 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const radiusMeters = Math.min(Math.round(data.radiusMiles * 1609.34), 50_000);
 
-    // Places API (New) — Nearby Search
     const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
       method: "POST",
       headers: gwHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.addressComponents,places.internationalPhoneNumber",
+          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
       }),
       body: JSON.stringify({
         maxResultCount: 20,
         rankPreference: "DISTANCE",
+        includedTypes: INCLUDED_TYPES,
         locationRestriction: {
           circle: {
             center: { latitude: data.lat, longitude: data.lng },
@@ -186,38 +348,42 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         formattedAddress?: string;
         location?: { latitude: number; longitude: number };
         types?: string[];
+        primaryType?: string;
         addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
         internationalPhoneNumber?: string;
+        photos?: Array<{ name: string }>;
       }>;
     };
-    const places = json.places ?? [];
+    const places = (json.places ?? []).filter(
+      (p) => p.id && p.location && p.displayName?.text && !isExcluded(p.primaryType, p.types),
+    );
 
-    // Upsert businesses into DB
-    const rows = places
-      .filter((p) => p.id && p.location && p.displayName?.text)
-      .map((p) => {
-        const comps = (p.addressComponents ?? []).map((c) => ({
-          types: c.types,
-          short_name: c.shortText,
-          long_name: c.longText,
-        }));
-        return {
-          google_place_id: p.id,
-          name: p.displayName!.text,
-          address: p.formattedAddress ?? null,
-          city:
-            pickAddressComponent(comps, "locality") ??
-            pickAddressComponent(comps, "sublocality") ??
-            pickAddressComponent(comps, "postal_town"),
-          state: pickAddressComponent(comps, "administrative_area_level_1", true),
-          zip: pickAddressComponent(comps, "postal_code"),
-          lat: p.location!.latitude,
-          lng: p.location!.longitude,
-          category: categoryFromTypes(p.types),
-          phone: p.internationalPhoneNumber ?? null,
-          updated_at: new Date().toISOString(),
-        };
-      });
+    const rows = places.map((p) => {
+      const comps = (p.addressComponents ?? []).map((c) => ({
+        types: c.types,
+        short_name: c.shortText,
+        long_name: c.longText,
+      }));
+      const cat = pickCategory(p.primaryType, p.types);
+      return {
+        google_place_id: p.id,
+        name: p.displayName!.text,
+        address: p.formattedAddress ?? null,
+        city:
+          pickAddressComponent(comps, "locality") ??
+          pickAddressComponent(comps, "sublocality") ??
+          pickAddressComponent(comps, "postal_town"),
+        state: pickAddressComponent(comps, "administrative_area_level_1", true),
+        zip: pickAddressComponent(comps, "postal_code"),
+        lat: p.location!.latitude,
+        lng: p.location!.longitude,
+        category: cat.label,
+        primary_type: cat.primary,
+        phone: p.internationalPhoneNumber ?? null,
+        logo_url: buildPhotoUrl(p.photos?.[0]?.name),
+        updated_at: new Date().toISOString(),
+      };
+    });
 
     if (rows.length) {
       const { error } = await supabase
@@ -226,52 +392,42 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       if (error) console.error("upsert businesses failed:", error);
     }
 
-    // Read back stored ids (needed to attach wait aggregates)
     const placeIds = rows.map((r) => r.google_place_id);
     const { data: storedRaw, error: readErr } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, phone")
-      .in("google_place_id", placeIds);
+      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .in("google_place_id", placeIds.length ? placeIds : ["__none__"]);
     if (readErr) throw new Error(readErr.message);
-    const stored = (storedRaw ?? []) as Array<{
-      id: string; google_place_id: string; name: string;
-      address: string | null; city: string | null; state: string | null; zip: string | null;
-      lat: number; lng: number; category: string; phone: string | null;
-    }>;
+    const stored = (storedRaw ?? []) as Array<any>;
 
     const ids = stored.map((b) => b.id);
     const { data: reportsRaw } = await supabase
       .from("wait_reports")
-      .select("business_id, minutes, created_at")
+      .select("business_id, minutes, created_at, source")
       .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
-      .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString())
+      .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
       .order("created_at", { ascending: false });
     const reports = (reportsRaw ?? []) as Array<{
-      business_id: string; minutes: number; created_at: string;
+      business_id: string; minutes: number; created_at: string; source: string | null;
     }>;
 
-    const byBiz = new Map<string, { minutes: number[]; latest: string; count: number }>();
+    const byBiz = new Map<string, StoredReport[]>();
     for (const r of reports) {
-      const agg = byBiz.get(r.business_id) ?? { minutes: [], latest: r.created_at, count: 0 };
-      agg.minutes.push(r.minutes);
-      if (r.created_at > agg.latest) agg.latest = r.created_at;
-      agg.count += 1;
-      byBiz.set(r.business_id, agg);
+      const list = byBiz.get(r.business_id) ?? [];
+      list.push({ minutes: r.minutes, created_at: r.created_at, source: r.source });
+      byBiz.set(r.business_id, list);
     }
 
     return stored.map((b) => {
-      const agg = byBiz.get(b.id);
-      const avg = agg
-        ? Math.round(agg.minutes.reduce((s, x) => s + x, 0) / agg.minutes.length)
-        : null;
-      const updatedMinutesAgo = agg
-        ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
-        : null;
+      const agg = aggregateReports(byBiz.get(b.id) ?? []);
       return {
         ...b,
-        currentMinutes: avg,
-        updatedMinutesAgo,
-        contributors: agg?.count ?? 0,
+        currentMinutes: agg.current,
+        updatedMinutesAgo: agg.latest
+          ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+          : null,
+        contributors: agg.count,
+        trend: agg.trend,
       };
     });
   });
@@ -289,49 +445,43 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: businessRaw, error } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, phone")
+      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!businessRaw) throw new Error("Business not found");
-    const business = businessRaw as {
-      id: string; google_place_id: string; name: string;
-      address: string | null; city: string | null; state: string | null; zip: string | null;
-      lat: number; lng: number; category: string; phone: string | null;
-    };
+    const business = businessRaw as any;
 
     const { data: reportsRaw } = await supabase
       .from("wait_reports")
-      .select("id, minutes, created_at, reporter_key")
+      .select("id, minutes, created_at, reporter_key, source, comment")
       .eq("business_id", data.id)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(30);
     const reports = (reportsRaw ?? []) as Array<{
       id: string; minutes: number; created_at: string; reporter_key: string | null;
+      source: string | null; comment: string | null;
     }>;
 
-    const recent = reports.filter(
-      (r) => Date.now() - new Date(r.created_at).getTime() <= 60 * 60 * 1000,
+    const agg = aggregateReports(
+      reports.map((r) => ({ minutes: r.minutes, created_at: r.created_at, source: r.source })),
     );
-    const avg =
-      recent.length > 0
-        ? Math.round(recent.reduce((s, r) => s + r.minutes, 0) / recent.length)
-        : null;
-    const latest = reports[0];
-    const updatedMinutesAgo = latest
-      ? Math.max(0, (Date.now() - new Date(latest.created_at).getTime()) / 60_000)
-      : null;
 
     return {
       ...business,
-      currentMinutes: avg,
-      updatedMinutesAgo,
-      contributors: recent.length,
+      currentMinutes: agg.current,
+      updatedMinutesAgo: agg.latest
+        ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+        : null,
+      contributors: agg.count,
+      trend: agg.trend,
       reports: reports.map((r) => ({
         id: r.id,
         minutes: r.minutes,
         minutesAgo: Math.max(0, (Date.now() - new Date(r.created_at).getTime()) / 60_000),
         contributor: (r.reporter_key ?? "anon").slice(0, 2).toUpperCase(),
+        source: (r.source ?? "quick") as "quick" | "exact" | "timer",
+        comment: r.comment,
       })),
     };
   });
@@ -340,13 +490,23 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
 // Submit a wait-time report
 // ---------------------------------------------------------------------------
 export const submitWaitReport = createServerFn({ method: "POST" })
-  .inputValidator((data: { businessId: string; minutes: number; reporterKey: string }) => {
+  .inputValidator((data: {
+    businessId: string;
+    minutes: number;
+    reporterKey: string;
+    source?: "quick" | "exact" | "timer";
+    comment?: string;
+  }) => {
     const id = String(data?.businessId ?? "");
     const m = Number(data?.minutes);
     const key = String(data?.reporterKey ?? "").slice(0, 64);
+    const source = data?.source && ["quick", "exact", "timer"].includes(data.source)
+      ? data.source
+      : "quick";
+    const comment = data?.comment ? String(data.comment).trim().slice(0, 200) : null;
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid business id");
     if (!Number.isFinite(m) || m < 0 || m > 240) throw new Error("Invalid wait time");
-    return { businessId: id, minutes: Math.round(m), reporterKey: key };
+    return { businessId: id, minutes: Math.round(m), reporterKey: key, source, comment };
   })
   .handler(async ({ data }) => {
     const supabase = getSupabase();
@@ -354,13 +514,15 @@ export const submitWaitReport = createServerFn({ method: "POST" })
       business_id: data.businessId,
       minutes: data.minutes,
       reporter_key: data.reporterKey || null,
+      source: data.source,
+      comment: data.comment,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
 
 // ---------------------------------------------------------------------------
-// Look up favorites by id (for the Favorites page)
+// Look up favorites by id
 // ---------------------------------------------------------------------------
 export const getBusinessesByIds = createServerFn({ method: "POST" })
   .inputValidator((data: { ids: string[] }) => {
@@ -372,7 +534,7 @@ export const getBusinessesByIds = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: rows, error } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, phone")
+      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
       .in("id", data.ids);
     if (error) throw new Error(error.message);
     return rows ?? [];

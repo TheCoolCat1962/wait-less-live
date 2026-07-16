@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clock, MapPin, Star, Users, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, MapPin, Star, Users, Loader2, Plus, Timer } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { WaitBadge } from "@/components/queueless/WaitBadge";
 import {
   crowdLabel,
-  emojiForCategory,
+  emojiForBusiness,
   formatUpdated,
   toneFromMinutes,
+  trendLabel,
 } from "@/lib/queueless-data";
 import { useFavorites } from "@/lib/favorites";
 import { useReportSheet } from "@/components/queueless/ReportSheetContext";
@@ -48,6 +49,9 @@ const toneText: Record<string, string> = {
   neutral: "text-foreground",
 };
 
+type BusinessDetail = Awaited<ReturnType<typeof getBusinessWithReports>>;
+type Report = BusinessDetail["reports"][number];
+
 function BusinessPage() {
   const { id } = Route.useParams();
   const { has, toggle } = useFavorites();
@@ -82,6 +86,7 @@ function BusinessPage() {
   const business = q.data;
   const fav = has(business.id);
   const tone = toneFromMinutes(business.currentMinutes);
+  const trend = business.currentMinutes != null ? trendLabel(business.trend) : null;
 
   return (
     <AppShell>
@@ -101,8 +106,12 @@ function BusinessPage() {
 
       <section className={`bg-gradient-to-b ${toneBg[tone]} px-5 pb-8 pt-6`}>
         <div className="flex items-center gap-3">
-          <div className="grid size-14 place-items-center rounded-2xl bg-surface text-2xl shadow-sm">
-            {emojiForCategory(business.category)}
+          <div className="grid size-14 place-items-center overflow-hidden rounded-2xl bg-surface text-2xl shadow-sm">
+            {business.logo_url ? (
+              <img src={business.logo_url} alt="" className="size-full object-cover" />
+            ) : (
+              emojiForBusiness(business)
+            )}
           </div>
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -121,9 +130,7 @@ function BusinessPage() {
           <div className="mt-1 flex items-baseline gap-2">
             {business.currentMinutes != null ? (
               <>
-                <span
-                  className={`text-5xl font-black tracking-tight ${toneText[tone]}`}
-                >
+                <span className={`text-5xl font-black tracking-tight ${toneText[tone]}`}>
                   {business.currentMinutes}
                 </span>
                 <span className="text-base font-bold text-muted-foreground">min</span>
@@ -137,24 +144,46 @@ function BusinessPage() {
           <p className={`mt-1 text-sm font-bold ${toneText[tone]}`}>
             {crowdLabel(business.currentMinutes)}
           </p>
+          {business.currentMinutes != null && (
+            <p className="mt-1 text-xs font-medium text-muted-foreground">
+              Based on {business.contributors} recent report
+              {business.contributors === 1 ? "" : "s"}
+            </p>
+          )}
 
           <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Clock className="size-3.5" />
               Updated {formatUpdated(business.updatedMinutesAgo)}
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Users className="size-3.5" />
-              {business.contributors} contributor{business.contributors === 1 ? "" : "s"}
-            </div>
+            {trend ? (
+              <div className={`flex items-center gap-2 font-bold ${trend.tone}`}>
+                <span>{trend.icon}</span> {trend.label}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Users className="size-3.5" />
+                {business.contributors} contributor
+                {business.contributors === 1 ? "" : "s"}
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={() => open(business.id)}
-            className="mt-5 w-full rounded-2xl bg-brand py-3.5 text-sm font-bold text-brand-foreground shadow-lg shadow-brand/30"
-          >
-            Report current wait
-          </button>
+          {business.currentMinutes == null ? (
+            <button
+              onClick={() => open(business.id)}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand py-3.5 text-sm font-bold text-brand-foreground shadow-lg shadow-brand/30"
+            >
+              <Plus className="size-4" /> Be first to report
+            </button>
+          ) : (
+            <button
+              onClick={() => open(business.id)}
+              className="mt-5 w-full rounded-2xl bg-brand py-3.5 text-sm font-bold text-brand-foreground shadow-lg shadow-brand/30"
+            >
+              Report current wait
+            </button>
+          )}
         </div>
       </section>
 
@@ -169,23 +198,40 @@ function BusinessPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {business.reports.map((r) => (
+              {business.reports.map((r: Report) => (
                 <div
                   key={r.id}
-                  className="flex items-center justify-between rounded-2xl border border-border bg-surface p-3"
+                  className="rounded-2xl border border-border bg-surface p-3"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="grid size-9 place-items-center rounded-full bg-surface-muted text-[10px] font-bold uppercase text-muted-foreground">
-                      {r.contributor}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="grid size-9 place-items-center rounded-full bg-surface-muted text-[10px] font-bold uppercase text-muted-foreground">
+                        {r.contributor}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold flex items-center gap-1.5">
+                          Anonymous
+                          {r.source === "timer" && (
+                            <span
+                              title="Timed report — higher confidence"
+                              className="inline-flex items-center gap-0.5 rounded-full bg-brand/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-brand"
+                            >
+                              <Timer className="size-2.5" /> Timed
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {formatUpdated(r.minutesAgo)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-bold">Anonymous</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {formatUpdated(r.minutesAgo)}
-                      </p>
-                    </div>
+                    <WaitBadge minutes={r.minutes} />
                   </div>
-                  <WaitBadge minutes={r.minutes} />
+                  {r.comment && (
+                    <p className="mt-2 rounded-lg bg-surface-muted px-3 py-2 text-xs font-medium text-foreground/80">
+                      "{r.comment}"
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

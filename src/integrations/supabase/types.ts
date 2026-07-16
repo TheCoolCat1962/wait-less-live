@@ -24,8 +24,10 @@ export type Database = {
           id: string
           lat: number
           lng: number
+          logo_url: string | null
           name: string
           phone: string | null
+          primary_type: string | null
           state: string | null
           updated_at: string
           zip: string | null
@@ -39,8 +41,10 @@ export type Database = {
           id?: string
           lat: number
           lng: number
+          logo_url?: string | null
           name: string
           phone?: string | null
+          primary_type?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -54,8 +58,10 @@ export type Database = {
           id?: string
           lat?: number
           lng?: number
+          logo_url?: string | null
           name?: string
           phone?: string | null
+          primary_type?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -65,24 +71,30 @@ export type Database = {
       wait_reports: {
         Row: {
           business_id: string
+          comment: string | null
           created_at: string
           id: string
           minutes: number
           reporter_key: string | null
+          source: string
         }
         Insert: {
           business_id: string
+          comment?: string | null
           created_at?: string
           id?: string
           minutes: number
           reporter_key?: string | null
+          source?: string
         }
         Update: {
           business_id?: string
+          comment?: string | null
           created_at?: string
           id?: string
           minutes?: number
           reporter_key?: string | null
+          source?: string
         }
         Relationships: [
           {

@@ -1,20 +1,22 @@
-// Static reference data + pure helpers. All live business data now lives in
+// Static reference data + pure helpers. All live business data lives in
 // the Cloud database and is fetched via `queueless.functions.ts`.
 
-export type WaitLevel = "none" | "short" | "medium" | "long" | "very_long";
+export type WaitLevel = "none" | "short" | "medium" | "long";
+export type ReportSource = "quick" | "exact" | "timer";
+export type Trend = "up" | "down" | "stable";
 
 export const WAIT_OPTIONS: Array<{
   level: WaitLevel;
   label: string;
   range: string;
   minutes: number;
-  tone: "safe" | "caution" | "danger";
+  emoji: string;
+  tone: "safe" | "caution" | "warn" | "danger";
 }> = [
-  { level: "none", label: "No wait", range: "0–5 min", minutes: 3, tone: "safe" },
-  { level: "short", label: "Short", range: "5–15 min", minutes: 10, tone: "safe" },
-  { level: "medium", label: "Medium", range: "15–30 min", minutes: 22, tone: "caution" },
-  { level: "long", label: "Long", range: "30–60 min", minutes: 45, tone: "danger" },
-  { level: "very_long", label: "Very long", range: "60+ min", minutes: 75, tone: "danger" },
+  { level: "none", label: "0–5 min", range: "No wait", minutes: 3, emoji: "🟢", tone: "safe" },
+  { level: "short", label: "5–15 min", range: "Short line", minutes: 10, emoji: "🟡", tone: "caution" },
+  { level: "medium", label: "15–30 min", range: "Moderate", minutes: 22, emoji: "🟠", tone: "warn" },
+  { level: "long", label: "30+ min", range: "Long wait", minutes: 45, emoji: "🔴", tone: "danger" },
 ];
 
 export interface Coords {
@@ -33,20 +35,16 @@ export interface Business {
   lat: number;
   lng: number;
   category: string;
+  primary_type?: string | null;
   phone: string | null;
-}
-
-export interface WaitReport {
-  id: string;
-  minutes: number;
-  minutesAgo: number;
-  contributor: string;
+  logo_url?: string | null;
 }
 
 export interface BusinessWithWait extends Business {
   currentMinutes: number | null;
   updatedMinutesAgo: number | null;
   contributors: number;
+  trend?: Trend;
   distanceMi?: number;
 }
 
@@ -76,21 +74,59 @@ export function formatUpdated(minutesAgo: number | null): string {
   return `${h}h ago`;
 }
 
-export function emojiForCategory(category: string): string {
-  const key = category.toLowerCase();
-  if (key.includes("grocery") || key.includes("supermarket")) return "🛒";
-  if (key.includes("coffee") || key.includes("cafe")) return "☕";
-  if (key.includes("pharma") || key.includes("drug")) return "💊";
-  if (key.includes("bank") || key.includes("atm")) return "🏦";
-  if (key.includes("gym") || key.includes("fitness")) return "🏋️";
-  if (key.includes("dmv") || key.includes("government") || key.includes("city_hall")) return "🪪";
+export function trendLabel(t: Trend | undefined): { icon: string; label: string; tone: string } {
+  if (t === "up") return { icon: "📈", label: "Getting busier", tone: "text-danger" };
+  if (t === "down") return { icon: "📉", label: "Getting shorter", tone: "text-safe" };
+  return { icon: "➖", label: "Stable", tone: "text-muted-foreground" };
+}
+
+// Emoji lookup that first honors the Google Places primary_type, then the
+// app-friendly category label as a fallback.
+const PRIMARY_TYPE_EMOJI: Record<string, string> = {
+  supermarket: "🛒", grocery_store: "🛒",
+  convenience_store: "🏪",
+  department_store: "🏬", discount_store: "🏬", shopping_mall: "🏬",
+  warehouse_store: "📦", wholesaler: "📦",
+  clothing_store: "🛍️", shoe_store: "👟", electronics_store: "🔌",
+  home_improvement_store: "🔨", furniture_store: "🛋️", book_store: "📚",
+  cafe: "☕", coffee_shop: "☕",
+  restaurant: "🍽️", fast_food_restaurant: "🍔", meal_takeaway: "🥡",
+  bakery: "🥐", sandwich_shop: "🥪", pizza_restaurant: "🍕",
+  hamburger_restaurant: "🍔", ice_cream_shop: "🍦", bar: "🍺",
+  bank: "🏦", atm: "🏧", post_office: "📮",
+  local_government_office: "🪪", city_hall: "🏛️", courthouse: "⚖️",
+  hospital: "🏥", pharmacy: "💊", drugstore: "💊", medical_lab: "🩺",
+  airport: "✈️", gas_station: "⛽",
+  movie_theater: "🎬", amusement_park: "🎢",
+  gym: "🏋️", fitness_center: "🏋️",
+};
+
+export function emojiForBusiness(b: Pick<Business, "primary_type" | "category">): string {
+  if (b.primary_type && PRIMARY_TYPE_EMOJI[b.primary_type]) return PRIMARY_TYPE_EMOJI[b.primary_type];
+  const key = (b.category ?? "").toLowerCase();
+  if (key.includes("grocery")) return "🛒";
+  if (key.includes("coffee")) return "☕";
+  if (key.includes("fast food") || key.includes("burger")) return "🍔";
+  if (key.includes("pizza")) return "🍕";
+  if (key.includes("restaurant") || key.includes("takeout") || key.includes("food")) return "🍽️";
+  if (key.includes("pharmacy")) return "💊";
+  if (key.includes("bank")) return "🏦";
+  if (key.includes("hospital") || key.includes("urgent")) return "🏥";
   if (key.includes("post")) return "📮";
-  if (key.includes("bar") || key.includes("pub")) return "🍺";
-  if (key.includes("restaurant") || key.includes("meal") || key.includes("food")) return "🍽️";
-  if (key.includes("store") || key.includes("shop") || key.includes("retail")) return "🏬";
-  if (key.includes("hospital") || key.includes("clinic") || key.includes("doctor")) return "🏥";
+  if (key.includes("airport")) return "✈️";
   if (key.includes("gas")) return "⛽";
+  if (key.includes("movie")) return "🎬";
+  if (key.includes("theme") || key.includes("park")) return "🎢";
+  if (key.includes("gym") || key.includes("fitness")) return "🏋️";
+  if (key.includes("mall") || key.includes("department") || key.includes("retail") || key.includes("store")) return "🏬";
+  if (key.includes("warehouse")) return "📦";
+  if (key.includes("government") || key.includes("dmv")) return "🪪";
   return "📍";
+}
+
+// Legacy alias kept so any older imports keep compiling.
+export function emojiForCategory(category: string): string {
+  return emojiForBusiness({ primary_type: null, category });
 }
 
 // Haversine distance in miles
@@ -106,7 +142,6 @@ export function distanceMiles(a: Coords, b: Coords): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// Local reporter fingerprint — used so users can't spam their own reports
 export function getReporterKey(): string {
   if (typeof window === "undefined") return "ssr";
   const k = "queueless.reporter.v1";
