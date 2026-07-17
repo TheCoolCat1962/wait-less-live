@@ -376,7 +376,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       }>;
     };
     const places = (json.places ?? []).filter(
-      (p) => p.id && p.location && p.displayName?.text && !isExcluded(p.primaryType, p.types),
+      (p) => p.id && p.location && p.displayName?.text && isCustomerFacing(p.primaryType, p.types),
     );
 
     const rows = places.map((p) => {
