@@ -95,8 +95,10 @@ export const geocodeQuery = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 // Business type filtering — only places where wait times matter
 // ---------------------------------------------------------------------------
-// Google Places API (New) primary types we want to surface.
-const INCLUDED_TYPES = [
+// Allowed Google Places (New) primary types — used to filter results
+// AFTER a broad nearby search. We never send this list to Google, so an
+// unrecognized type here can never cause the Places API to reject the request.
+const ALLOWED_TYPES_SET = new Set([
   // Grocery / retail
   "supermarket",
   "grocery_store",
@@ -112,18 +114,21 @@ const INCLUDED_TYPES = [
   "home_improvement_store",
   "furniture_store",
   "book_store",
+  "store", // generic retail — the excluded set below catches non-customer types
   // Coffee / food
   "cafe",
   "coffee_shop",
   "restaurant",
   "fast_food_restaurant",
   "meal_takeaway",
+  "meal_delivery",
   "bakery",
   "sandwich_shop",
   "pizza_restaurant",
   "hamburger_restaurant",
   "ice_cream_shop",
   "bar",
+  "food",
   // Finance / civic
   "bank",
   "atm",
@@ -136,41 +141,46 @@ const INCLUDED_TYPES = [
   "pharmacy",
   "drugstore",
   "medical_lab",
+  "doctor",
+  "dentist",
   // Travel
   "airport",
   "gas_station",
   // Entertainment
   "movie_theater",
   "amusement_park",
+  "tourist_attraction",
   // Fitness
   "gym",
   "fitness_center",
-];
+]);
 
-// Types we always want to hide even if Google returns them alongside allowed types.
+// Types we always want to hide, even if Google returns them alongside allowed types.
+// Covers houses, contractors, industrial, warehouses/storage, and other
+// non-customer-facing locations.
 const EXCLUDED_TYPES_SET = new Set([
-  "lodging",
-  "hotel",
-  "motel",
-  "bed_and_breakfast",
-  "extended_stay_hotel",
-  "guest_house",
-  "resort_hotel",
-  "campground",
-  "rv_park",
-  "real_estate_agency",
-  "lawyer",
-  "accounting",
-  "insurance_agency",
-  "general_contractor",
-  "roofing_contractor",
-  "plumber",
-  "electrician",
-  "painter",
-  "moving_company",
-  "storage",
-  "farm",
-  "food_court", // usually inside malls, low signal
+  // Lodging
+  "lodging", "hotel", "motel", "bed_and_breakfast", "extended_stay_hotel",
+  "guest_house", "resort_hotel", "campground", "rv_park", "hostel",
+  "cottage", "inn",
+  // Professional offices (not walk-in)
+  "real_estate_agency", "lawyer", "accounting", "insurance_agency",
+  "travel_agency", "corporate_office",
+  // Contractors / trades / industrial
+  "general_contractor", "roofing_contractor", "plumber", "electrician",
+  "painter", "locksmith", "moving_company", "car_repair", "car_dealer",
+  "car_wash", "auto_parts_store", "storage", "self_storage",
+  // Residential / homes
+  "premise", "subpremise", "residential", "apartment_complex",
+  "apartment_building", "housing_complex", "house",
+  // Agriculture / industrial
+  "farm", "farmstay", "wholesaler_agriculture",
+  // Misc low-signal
+  "food_court",
+  "place_of_worship", "church", "mosque", "synagogue", "hindu_temple",
+  "cemetery", "funeral_home",
+  "school", "primary_school", "secondary_school", "preschool",
+  "university", "library",
 ]);
 
 // Category label + emoji for a given Place. Prefers primary_type.
@@ -237,6 +247,15 @@ function pickCategory(primaryType: string | undefined, types: string[] | undefin
 function isExcluded(primaryType: string | undefined, types: string[] | undefined) {
   if (primaryType && EXCLUDED_TYPES_SET.has(primaryType)) return true;
   if (types?.some((t) => EXCLUDED_TYPES_SET.has(t))) return true;
+  return false;
+}
+
+// A place is customer-facing (wait-worthy) if any of its types is in the
+// allowlist AND none are in the exclusion list.
+function isCustomerFacing(primaryType: string | undefined, types: string[] | undefined) {
+  if (isExcluded(primaryType, types)) return false;
+  if (primaryType && ALLOWED_TYPES_SET.has(primaryType)) return true;
+  if (types?.some((t) => ALLOWED_TYPES_SET.has(t))) return true;
   return false;
 }
 
@@ -329,9 +348,11 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
       }),
       body: JSON.stringify({
+        // Broad nearby search — no includedTypes. We filter to customer-facing
+        // businesses in-app after the response, so the request can never fail
+        // because of an unsupported Google Places type.
         maxResultCount: 20,
         rankPreference: "DISTANCE",
-        includedTypes: INCLUDED_TYPES,
         locationRestriction: {
           circle: {
             center: { latitude: data.lat, longitude: data.lng },
@@ -355,7 +376,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       }>;
     };
     const places = (json.places ?? []).filter(
-      (p) => p.id && p.location && p.displayName?.text && !isExcluded(p.primaryType, p.types),
+      (p) => p.id && p.location && p.displayName?.text && isCustomerFacing(p.primaryType, p.types),
     );
 
     const rows = places.map((p) => {
