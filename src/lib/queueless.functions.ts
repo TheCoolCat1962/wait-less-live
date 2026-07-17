@@ -95,8 +95,10 @@ export const geocodeQuery = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 // Business type filtering — only places where wait times matter
 // ---------------------------------------------------------------------------
-// Google Places API (New) primary types we want to surface.
-const INCLUDED_TYPES = [
+// Allowed Google Places (New) primary types — used to filter results
+// AFTER a broad nearby search. We never send this list to Google, so an
+// unrecognized type here can never cause the Places API to reject the request.
+const ALLOWED_TYPES_SET = new Set([
   // Grocery / retail
   "supermarket",
   "grocery_store",
@@ -112,18 +114,21 @@ const INCLUDED_TYPES = [
   "home_improvement_store",
   "furniture_store",
   "book_store",
+  "store", // generic retail — the excluded set below catches non-customer types
   // Coffee / food
   "cafe",
   "coffee_shop",
   "restaurant",
   "fast_food_restaurant",
   "meal_takeaway",
+  "meal_delivery",
   "bakery",
   "sandwich_shop",
   "pizza_restaurant",
   "hamburger_restaurant",
   "ice_cream_shop",
   "bar",
+  "food",
   // Finance / civic
   "bank",
   "atm",
@@ -136,16 +141,19 @@ const INCLUDED_TYPES = [
   "pharmacy",
   "drugstore",
   "medical_lab",
+  "doctor",
+  "dentist",
   // Travel
   "airport",
   "gas_station",
   // Entertainment
   "movie_theater",
   "amusement_park",
+  "tourist_attraction",
   // Fitness
   "gym",
   "fitness_center",
-];
+]);
 
 // Types we always want to hide even if Google returns them alongside allowed types.
 const EXCLUDED_TYPES_SET = new Set([
