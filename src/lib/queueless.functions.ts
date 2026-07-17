@@ -250,6 +250,15 @@ function isExcluded(primaryType: string | undefined, types: string[] | undefined
   return false;
 }
 
+// A place is customer-facing (wait-worthy) if any of its types is in the
+// allowlist AND none are in the exclusion list.
+function isCustomerFacing(primaryType: string | undefined, types: string[] | undefined) {
+  if (isExcluded(primaryType, types)) return false;
+  if (primaryType && ALLOWED_TYPES_SET.has(primaryType)) return true;
+  if (types?.some((t) => ALLOWED_TYPES_SET.has(t))) return true;
+  return false;
+}
+
 function pickAddressComponent(
   components: Array<{ types: string[]; short_name?: string; long_name?: string }> | undefined,
   type: string,
