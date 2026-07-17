@@ -309,7 +309,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       headers: gwHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
+          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos,places.businessStatus",
       }),
       body: JSON.stringify({
         maxResultCount: 20,
@@ -337,10 +337,16 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
         internationalPhoneNumber?: string;
         photos?: Array<{ name: string }>;
+        businessStatus?: string;
       }>;
     };
     const places = (json.places ?? []).filter(
-      (p) => p.id && p.location && p.displayName?.text && !isExcluded(p.primaryType, p.types),
+      (p) =>
+        p.id &&
+        p.location &&
+        p.displayName?.text &&
+        (!p.businessStatus || p.businessStatus === "OPERATIONAL") &&
+        !isExcluded(p.primaryType, p.types),
     );
 
     const rows = places.map((p) => {
