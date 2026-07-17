@@ -314,7 +314,9 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       body: JSON.stringify({
         maxResultCount: 20,
         rankPreference: "DISTANCE",
-        includedTypes: INCLUDED_TYPES,
+        // No includedTypes — we want every public-facing business Google
+        // knows about. We filter obvious non-walk-in categories out below.
+        excludedTypes: Array.from(EXCLUDED_TYPES_SET),
         locationRestriction: {
           circle: {
             center: { latitude: data.lat, longitude: data.lng },
