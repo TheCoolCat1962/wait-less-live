@@ -155,30 +155,32 @@ const ALLOWED_TYPES_SET = new Set([
   "fitness_center",
 ]);
 
-// Types we always want to hide even if Google returns them alongside allowed types.
+// Types we always want to hide, even if Google returns them alongside allowed types.
+// Covers houses, contractors, industrial, warehouses/storage, and other
+// non-customer-facing locations.
 const EXCLUDED_TYPES_SET = new Set([
-  "lodging",
-  "hotel",
-  "motel",
-  "bed_and_breakfast",
-  "extended_stay_hotel",
-  "guest_house",
-  "resort_hotel",
-  "campground",
-  "rv_park",
-  "real_estate_agency",
-  "lawyer",
-  "accounting",
-  "insurance_agency",
-  "general_contractor",
-  "roofing_contractor",
-  "plumber",
-  "electrician",
-  "painter",
-  "moving_company",
-  "storage",
-  "farm",
-  "food_court", // usually inside malls, low signal
+  // Lodging
+  "lodging", "hotel", "motel", "bed_and_breakfast", "extended_stay_hotel",
+  "guest_house", "resort_hotel", "campground", "rv_park", "hostel",
+  "cottage", "inn",
+  // Professional offices (not walk-in)
+  "real_estate_agency", "lawyer", "accounting", "insurance_agency",
+  "travel_agency", "corporate_office",
+  // Contractors / trades / industrial
+  "general_contractor", "roofing_contractor", "plumber", "electrician",
+  "painter", "locksmith", "moving_company", "car_repair", "car_dealer",
+  "car_wash", "auto_parts_store", "storage", "self_storage",
+  // Residential / homes
+  "premise", "subpremise", "residential", "apartment_complex",
+  "apartment_building", "housing_complex", "house",
+  // Agriculture / industrial
+  "farm", "farmstay", "wholesaler_agriculture",
+  // Misc low-signal
+  "food_court",
+  "place_of_worship", "church", "mosque", "synagogue", "hindu_temple",
+  "cemetery", "funeral_home",
+  "school", "primary_school", "secondary_school", "preschool",
+  "university", "library",
 ]);
 
 // Category label + emoji for a given Place. Prefers primary_type.
