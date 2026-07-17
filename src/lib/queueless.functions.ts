@@ -348,9 +348,11 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
       }),
       body: JSON.stringify({
+        // Broad nearby search — no includedTypes. We filter to customer-facing
+        // businesses in-app after the response, so the request can never fail
+        // because of an unsupported Google Places type.
         maxResultCount: 20,
         rankPreference: "DISTANCE",
-        includedTypes: INCLUDED_TYPES,
         locationRestriction: {
           circle: {
             center: { latitude: data.lat, longitude: data.lng },
