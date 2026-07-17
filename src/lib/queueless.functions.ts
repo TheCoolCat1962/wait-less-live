@@ -93,87 +93,37 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
-// Business type filtering — only places where wait times matter
+// Business type filtering — inclusive by default. No whitelist. We ask
+// Google for every nearby place and only hide categories that clearly are
+// not public-facing walk-in businesses (residences, contractors,
+// industrial, storage, offices, etc.).
 // ---------------------------------------------------------------------------
-// Google Places API (New) primary types we want to surface.
-const INCLUDED_TYPES = [
-  // Grocery / retail
-  "supermarket",
-  "grocery_store",
-  "convenience_store",
-  "department_store",
-  "discount_store",
-  "warehouse_store",
-  "wholesaler",
-  "clothing_store",
-  "shoe_store",
-  "shopping_mall",
-  "electronics_store",
-  "home_improvement_store",
-  "furniture_store",
-  "book_store",
-  // Coffee / food
-  "cafe",
-  "coffee_shop",
-  "restaurant",
-  "fast_food_restaurant",
-  "meal_takeaway",
-  "bakery",
-  "sandwich_shop",
-  "pizza_restaurant",
-  "hamburger_restaurant",
-  "ice_cream_shop",
-  "bar",
-  // Finance / civic
-  "bank",
-  "atm",
-  "post_office",
-  "local_government_office",
-  "city_hall",
-  "courthouse",
-  // Health
-  "hospital",
-  "pharmacy",
-  "drugstore",
-  "medical_lab",
-  // Travel
-  "airport",
-  "gas_station",
-  // Entertainment
-  "movie_theater",
-  "amusement_park",
-  // Fitness
-  "gym",
-  "fitness_center",
-];
 
-// Types we always want to hide even if Google returns them alongside allowed types.
 const EXCLUDED_TYPES_SET = new Set([
-  "lodging",
-  "hotel",
-  "motel",
-  "bed_and_breakfast",
-  "extended_stay_hotel",
-  "guest_house",
-  "resort_hotel",
-  "campground",
-  "rv_park",
-  "real_estate_agency",
-  "lawyer",
-  "accounting",
-  "insurance_agency",
-  "general_contractor",
-  "roofing_contractor",
-  "plumber",
-  "electrician",
-  "painter",
-  "moving_company",
-  "storage",
-  "farm",
-  "food_court", // usually inside malls, low signal
+  // Lodging
+  "lodging", "hotel", "motel", "bed_and_breakfast", "extended_stay_hotel",
+  "guest_house", "resort_hotel", "campground", "rv_park",
+  // Professional / corporate offices — appointment-only or private
+  "real_estate_agency", "lawyer", "accounting", "insurance_agency",
+  "corporate_office",
+  // Contractors, trades, industrial, storage
+  "general_contractor", "roofing_contractor", "plumber", "electrician",
+  "painter", "moving_company", "storage", "self_storage",
+  // Residential
+  "apartment_building", "apartment_complex", "housing_complex",
+  "condominium_complex",
+  // Agriculture
+  "farm", "farmstay",
+  // Schools (generally not walk-in public service)
+  "school", "primary_school", "secondary_school", "preschool", "university",
+  // Places of worship
+  "church", "mosque", "synagogue", "hindu_temple", "place_of_worship",
+  // Misc
+  "cemetery", "funeral_home", "parking",
 ]);
 
-// Category label + emoji for a given Place. Prefers primary_type.
+// Category label + emoji. Anything not listed falls back to a friendly
+// generic label so uncommon/local businesses still surface.
 const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
   supermarket: { label: "Grocery", emoji: "🛒" },
   grocery_store: { label: "Grocery", emoji: "🛒" },
@@ -189,17 +139,23 @@ const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
   home_improvement_store: { label: "Home Improvement", emoji: "🔨" },
   furniture_store: { label: "Retail", emoji: "🛋️" },
   book_store: { label: "Retail", emoji: "📚" },
+  store: { label: "Store", emoji: "🛍️" },
 
   cafe: { label: "Coffee", emoji: "☕" },
   coffee_shop: { label: "Coffee", emoji: "☕" },
   restaurant: { label: "Restaurant", emoji: "🍽️" },
   fast_food_restaurant: { label: "Fast Food", emoji: "🍔" },
   meal_takeaway: { label: "Takeout", emoji: "🥡" },
+  meal_delivery: { label: "Takeout", emoji: "🥡" },
   bakery: { label: "Bakery", emoji: "🥐" },
   sandwich_shop: { label: "Sandwiches", emoji: "🥪" },
   pizza_restaurant: { label: "Pizza", emoji: "🍕" },
   hamburger_restaurant: { label: "Burgers", emoji: "🍔" },
   ice_cream_shop: { label: "Ice Cream", emoji: "🍦" },
+  dessert_shop: { label: "Dessert", emoji: "🍰" },
+  juice_shop: { label: "Juice Bar", emoji: "🧃" },
+  food: { label: "Food", emoji: "🍴" },
+  food_court: { label: "Food Court", emoji: "🍴" },
   bar: { label: "Bar", emoji: "🍺" },
 
   bank: { label: "Bank", emoji: "🏦" },
@@ -213,15 +169,42 @@ const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
   pharmacy: { label: "Pharmacy", emoji: "💊" },
   drugstore: { label: "Pharmacy", emoji: "💊" },
   medical_lab: { label: "Urgent Care", emoji: "🩺" },
+  doctor: { label: "Clinic", emoji: "🩺" },
+  dentist: { label: "Dentist", emoji: "🦷" },
+  veterinary_care: { label: "Vet", emoji: "🐾" },
 
   airport: { label: "Airport", emoji: "✈️" },
   gas_station: { label: "Gas", emoji: "⛽" },
+  car_wash: { label: "Car Wash", emoji: "🚗" },
+  car_rental: { label: "Car Rental", emoji: "🚙" },
+  train_station: { label: "Train", emoji: "🚆" },
+  transit_station: { label: "Transit", emoji: "🚉" },
+  bus_station: { label: "Bus", emoji: "🚌" },
+  subway_station: { label: "Subway", emoji: "🚇" },
+  ferry_terminal: { label: "Ferry", emoji: "⛴️" },
 
   movie_theater: { label: "Movie Theater", emoji: "🎬" },
   amusement_park: { label: "Theme Park", emoji: "🎢" },
+  water_park: { label: "Water Park", emoji: "🏊" },
+  museum: { label: "Museum", emoji: "🏛️" },
+  zoo: { label: "Zoo", emoji: "🦁" },
+  aquarium: { label: "Aquarium", emoji: "🐠" },
+  stadium: { label: "Stadium", emoji: "🏟️" },
+  arena: { label: "Arena", emoji: "🏟️" },
+  event_venue: { label: "Event Venue", emoji: "🎟️" },
+  tourist_attraction: { label: "Attraction", emoji: "📸" },
+  night_club: { label: "Nightclub", emoji: "🎶" },
+  casino: { label: "Casino", emoji: "🎰" },
+  bowling_alley: { label: "Bowling", emoji: "🎳" },
+  park: { label: "Park", emoji: "🌳" },
 
   gym: { label: "Gym", emoji: "🏋️" },
   fitness_center: { label: "Gym", emoji: "🏋️" },
+  spa: { label: "Spa", emoji: "💆" },
+  hair_salon: { label: "Salon", emoji: "💇" },
+  barber_shop: { label: "Barber", emoji: "💈" },
+  beauty_salon: { label: "Salon", emoji: "💅" },
+  nail_salon: { label: "Nail Salon", emoji: "💅" },
 };
 
 function pickCategory(primaryType: string | undefined, types: string[] | undefined) {
@@ -326,12 +309,14 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       headers: gwHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
+          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos,places.businessStatus",
       }),
       body: JSON.stringify({
         maxResultCount: 20,
         rankPreference: "DISTANCE",
-        includedTypes: INCLUDED_TYPES,
+        // No includedTypes — we want every public-facing business Google
+        // knows about. We filter obvious non-walk-in categories out below.
+        excludedTypes: Array.from(EXCLUDED_TYPES_SET),
         locationRestriction: {
           circle: {
             center: { latitude: data.lat, longitude: data.lng },
@@ -352,10 +337,16 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
         internationalPhoneNumber?: string;
         photos?: Array<{ name: string }>;
+        businessStatus?: string;
       }>;
     };
     const places = (json.places ?? []).filter(
-      (p) => p.id && p.location && p.displayName?.text && !isExcluded(p.primaryType, p.types),
+      (p) =>
+        p.id &&
+        p.location &&
+        p.displayName?.text &&
+        (!p.businessStatus || p.businessStatus === "OPERATIONAL") &&
+        !isExcluded(p.primaryType, p.types),
     );
 
     const rows = places.map((p) => {
