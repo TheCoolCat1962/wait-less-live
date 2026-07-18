@@ -20,13 +20,18 @@ export function LocationPrompt() {
         <div className="grid size-14 place-items-center rounded-2xl bg-brand/10 text-brand">
           <MapPin className="size-6" />
         </div>
-        <h2 className="mt-4 text-xl font-extrabold tracking-tight">
+        <p className="mt-4 inline-block rounded-full bg-brand/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-brand">
+          Now launching · New Orleans
+        </p>
+        <h2 className="mt-2 text-xl font-extrabold tracking-tight">
           Find wait times near you
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          QueueLess shows live wait times at stores across the US. Share your
-          location or enter a ZIP code, city, or address.
+          QueueLess is live across the New Orleans metro — Metairie, Kenner,
+          Gretna, Chalmette and more. Share your location or enter a ZIP code,
+          neighborhood, or address. More cities coming soon.
         </p>
+
 
         <button
           type="button"
