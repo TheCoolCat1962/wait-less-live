@@ -338,7 +338,8 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       body: JSON.stringify({
         maxResultCount: 20,
         rankPreference: "DISTANCE",
-        includedTypes: INCLUDED_TYPES,
+        // No includedTypes: Google returns all public-facing places, we then
+        // filter out non-public-facing categories client-side.
         locationRestriction: {
           circle: {
             center: { latitude: data.lat, longitude: data.lng },
