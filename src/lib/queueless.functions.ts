@@ -60,18 +60,45 @@ async function handleGwError(res: Response) {
 }
 
 // ---------------------------------------------------------------------------
-// Geocode a user-entered query (ZIP, city, address) → { lat, lng, label }
+// New Orleans metro focus (V1 launch region)
+// ---------------------------------------------------------------------------
+// Rough bounding box covering New Orleans, Metairie, Kenner, Gretna, Harvey,
+// Marrero, Chalmette, Arabi, Jefferson, Westwego, Harahan, River Ridge,
+// Elmwood, Belle Chasse.
+const NOLA_BOUNDS = {
+  south: 29.82,
+  west: -90.35,
+  north: 30.15,
+  east: -89.55,
+};
+const NOLA_CENTER = { lat: 29.9511, lng: -90.0715 };
+
+export function isInNolaMetro(lat: number, lng: number) {
+  return (
+    lat >= NOLA_BOUNDS.south &&
+    lat <= NOLA_BOUNDS.north &&
+    lng >= NOLA_BOUNDS.west &&
+    lng <= NOLA_BOUNDS.east
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Geocode a user-entered query (ZIP, city, address, neighborhood) → coords
+// Biased to the New Orleans metro so ambiguous queries resolve locally.
 // ---------------------------------------------------------------------------
 export const geocodeQuery = createServerFn({ method: "POST" })
   .inputValidator((data: { query: string }) => {
     const q = String(data?.query ?? "").trim();
-    if (!q || q.length > 200) throw new Error("Enter a ZIP code, city, or address.");
+    if (!q || q.length > 200) throw new Error("Enter a ZIP code, city, address, or neighborhood.");
     return { query: q };
   })
   .handler(async ({ data }) => {
+    const bounds = `${NOLA_BOUNDS.south},${NOLA_BOUNDS.west}|${NOLA_BOUNDS.north},${NOLA_BOUNDS.east}`;
     const url =
       `${GATEWAY_URL}/maps/api/geocode/json` +
-      `?address=${encodeURIComponent(data.query)}&components=country:US`;
+      `?address=${encodeURIComponent(data.query)}` +
+      `&components=country:US` +
+      `&bounds=${encodeURIComponent(bounds)}`;
     const res = await fetch(url, { headers: gwHeaders() });
     if (!res.ok) await handleGwError(res);
     const json = (await res.json()) as {
@@ -82,15 +109,21 @@ export const geocodeQuery = createServerFn({ method: "POST" })
       }>;
     };
     if (json.status !== "OK" || !json.results.length) {
-      throw new Error("We couldn't find that location. Try a ZIP code or a city name.");
+      throw new Error("We couldn't find that location. Try a New Orleans ZIP code, neighborhood, or address.");
     }
-    const r = json.results[0];
+    // Prefer a result inside the NOLA bounding box when available.
+    const inMetro = json.results.find((r) =>
+      isInNolaMetro(r.geometry.location.lat, r.geometry.location.lng),
+    );
+    const r = inMetro ?? json.results[0];
     return {
       lat: r.geometry.location.lat,
       lng: r.geometry.location.lng,
       label: r.formatted_address,
+      inNolaMetro: isInNolaMetro(r.geometry.location.lat, r.geometry.location.lng),
     };
   });
+
 
 // ---------------------------------------------------------------------------
 // Business type filtering — only places where wait times matter
