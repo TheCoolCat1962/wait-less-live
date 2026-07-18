@@ -126,62 +126,21 @@ export const geocodeQuery = createServerFn({ method: "POST" })
 
 
 // ---------------------------------------------------------------------------
-// Business type filtering — only places where wait times matter
+// Business type filtering — inclusive by default
 // ---------------------------------------------------------------------------
-// Google Places API (New) primary types we want to surface.
-const INCLUDED_TYPES = [
-  // Grocery / retail
-  "supermarket",
-  "grocery_store",
-  "convenience_store",
-  "department_store",
-  "discount_store",
-  "warehouse_store",
-  "wholesaler",
-  "clothing_store",
-  "shoe_store",
-  "shopping_mall",
-  "electronics_store",
-  "home_improvement_store",
-  "furniture_store",
-  "book_store",
-  // Coffee / food
-  "cafe",
-  "coffee_shop",
-  "restaurant",
-  "fast_food_restaurant",
-  "meal_takeaway",
-  "bakery",
-  "sandwich_shop",
-  "pizza_restaurant",
-  "hamburger_restaurant",
-  "ice_cream_shop",
-  "bar",
-  // Finance / civic
-  "bank",
-  "atm",
-  "post_office",
-  "local_government_office",
-  "city_hall",
-  "courthouse",
-  // Health
-  "hospital",
-  "pharmacy",
-  "drugstore",
-  "medical_lab",
-  // Travel
-  "airport",
-  "gas_station",
-  // Entertainment
-  "movie_theater",
-  "amusement_park",
-  // Fitness
-  "gym",
-  "fitness_center",
-];
-
-// Types we always want to hide even if Google returns them alongside allowed types.
+// We do NOT restrict discovery to a whitelist anymore. Google Places returns
+// any legitimate public-facing place; we only strip out categories where
+// customers never wait in line (private residences, industrial sites,
+// contractors, warehouses, utility infrastructure, vacant land, etc.).
 const EXCLUDED_TYPES_SET = new Set([
+  // Private residences / lodging (we still allow hotels? — no, hidden per spec)
+  "premise",
+  "subpremise",
+  "residential",
+  "apartment_complex",
+  "apartment_building",
+  "housing_complex",
+  "condominium_complex",
   "lodging",
   "hotel",
   "motel",
@@ -191,20 +150,35 @@ const EXCLUDED_TYPES_SET = new Set([
   "resort_hotel",
   "campground",
   "rv_park",
-  "real_estate_agency",
-  "lawyer",
-  "accounting",
-  "insurance_agency",
+  // Contractors / trades
   "general_contractor",
   "roofing_contractor",
   "plumber",
   "electrician",
   "painter",
+  "locksmith",
   "moving_company",
+  "hvac_contractor",
+  // Industrial / manufacturing / warehousing
+  "industrial",
+  "factory",
+  "manufacturer",
+  "warehouse",
   "storage",
+  "self_storage",
+  // Utility infrastructure
+  "utility",
+  "electric_vehicle_charging_station",
+  "power_plant",
+  "water_treatment_plant",
+  // Land / raw
+  "land_plot",
+  "vacant_land",
+  "cemetery",
+  // Non-public offices (users can still add manually via search)
   "farm",
-  "food_court", // usually inside malls, low signal
 ]);
+
 
 // Category label + emoji for a given Place. Prefers primary_type.
 const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
