@@ -547,3 +547,145 @@ export const getBusinessesByIds = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
+
+// ---------------------------------------------------------------------------
+// Text search — for business names, keywords, neighborhoods.
+// Biased to the user's current coords (or the New Orleans metro by default),
+// and always restricted to a wide radius around the bias point.
+// ---------------------------------------------------------------------------
+export const searchBusinessesByText = createServerFn({ method: "POST" })
+  .inputValidator((data: { query: string; lat?: number; lng?: number }) => {
+    const query = String(data?.query ?? "").trim();
+    if (!query || query.length > 120) throw new Error("Enter a business name or keyword.");
+    const lat = Number.isFinite(Number(data?.lat)) ? Number(data!.lat) : NOLA_CENTER.lat;
+    const lng = Number.isFinite(Number(data?.lng)) ? Number(data!.lng) : NOLA_CENTER.lng;
+    return { query, lat, lng };
+  })
+  .handler(async ({ data }) => {
+    const supabase = getSupabase();
+
+    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchText`, {
+      method: "POST",
+      headers: gwHeaders({
+        "Content-Type": "application/json",
+        "X-Goog-FieldMask":
+          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
+      }),
+      body: JSON.stringify({
+        textQuery: data.query,
+        pageSize: 20,
+        locationBias: {
+          circle: {
+            center: { latitude: data.lat, longitude: data.lng },
+            radius: 40_000, // ~25 mi bias
+          },
+        },
+      }),
+    });
+    if (!res.ok) await handleGwError(res);
+    const json = (await res.json()) as {
+      places?: Array<{
+        id: string;
+        displayName?: { text: string };
+        formattedAddress?: string;
+        location?: { latitude: number; longitude: number };
+        types?: string[];
+        primaryType?: string;
+        addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
+        internationalPhoneNumber?: string;
+        photos?: Array<{ name: string }>;
+      }>;
+    };
+
+    const places = (json.places ?? []).filter(
+      (p) =>
+        p.id &&
+        p.location &&
+        p.displayName?.text &&
+        !isExcluded(p.primaryType, p.types) &&
+        isInNolaMetro(p.location.latitude, p.location.longitude),
+    );
+
+    const rows = places.map((p) => {
+      const comps = (p.addressComponents ?? []).map((c) => ({
+        types: c.types,
+        short_name: c.shortText,
+        long_name: c.longText,
+      }));
+      const cat = pickCategory(p.primaryType, p.types);
+      return {
+        google_place_id: p.id,
+        name: p.displayName!.text,
+        address: p.formattedAddress ?? null,
+        city:
+          pickAddressComponent(comps, "locality") ??
+          pickAddressComponent(comps, "sublocality") ??
+          pickAddressComponent(comps, "postal_town"),
+        state: pickAddressComponent(comps, "administrative_area_level_1", true),
+        zip: pickAddressComponent(comps, "postal_code"),
+        lat: p.location!.latitude,
+        lng: p.location!.longitude,
+        category: cat.label,
+        primary_type: cat.primary,
+        phone: p.internationalPhoneNumber ?? null,
+        logo_url: buildPhotoUrl(p.photos?.[0]?.name),
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    if (rows.length) {
+      const { error } = await supabase
+        .from("businesses")
+        .upsert(rows, { onConflict: "google_place_id" });
+      if (error) console.error("upsert businesses failed:", error);
+    }
+
+    const placeIds = rows.map((r) => r.google_place_id);
+    const { data: storedRaw, error: readErr } = await supabase
+      .from("businesses")
+      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .in("google_place_id", placeIds.length ? placeIds : ["__none__"]);
+    if (readErr) throw new Error(readErr.message);
+    const stored = (storedRaw ?? []) as Array<any>;
+
+    // Preserve Google's relevance ranking.
+    const order = new Map(placeIds.map((id, i) => [id, i]));
+    stored.sort(
+      (a, b) => (order.get(a.google_place_id) ?? 999) - (order.get(b.google_place_id) ?? 999),
+    );
+
+    const ids = stored.map((b) => b.id);
+    const { data: reportsRaw } = await supabase
+      .from("wait_reports")
+      .select("business_id, minutes, created_at, source")
+      .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
+      .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
+      .order("created_at", { ascending: false });
+    const reports = (reportsRaw ?? []) as Array<{
+      business_id: string;
+      minutes: number;
+      created_at: string;
+      source: string | null;
+    }>;
+
+    const byBiz = new Map<string, StoredReport[]>();
+    for (const r of reports) {
+      const list = byBiz.get(r.business_id) ?? [];
+      list.push({ minutes: r.minutes, created_at: r.created_at, source: r.source });
+      byBiz.set(r.business_id, list);
+    }
+
+    return stored.map((b) => {
+      const agg = aggregateReports(byBiz.get(b.id) ?? []);
+      return {
+        ...b,
+        currentMinutes: agg.current,
+        updatedMinutesAgo: agg.latest
+          ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+          : null,
+        contributors: agg.count,
+        trend: agg.trend,
+      };
+    });
+  });
+
