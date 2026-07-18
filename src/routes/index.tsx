@@ -41,6 +41,14 @@ function HomePage() {
   const showPrompt =
     status === "idle" || status === "error" || (status === "prompting" && !location);
 
+  // NOLA metro bounds (kept in sync with server).
+  const inNola = location
+    ? location.coords.lat >= 29.82 &&
+      location.coords.lat <= 30.15 &&
+      location.coords.lng >= -90.35 &&
+      location.coords.lng <= -89.55
+    : true;
+
   return (
     <AppShell>
       <header className="sticky top-0 z-20 border-b border-border bg-surface/90 px-5 pb-4 pt-6 backdrop-blur">
@@ -50,7 +58,7 @@ function HomePage() {
               QueueLess
             </h1>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Know before you go
+              Now live · New Orleans metro
             </p>
           </div>
           <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface-muted">
@@ -71,6 +79,13 @@ function HomePage() {
             </button>
           )}
         </div>
+        {location && !inNola && (
+          <p className="mt-3 rounded-xl bg-brand/10 px-3 py-2 text-[11px] font-semibold text-brand">
+            QueueLess is launching in New Orleans first. You're outside the
+            metro — coverage in your area is coming soon.
+          </p>
+        )}
+
       </header>
 
       {location ? (

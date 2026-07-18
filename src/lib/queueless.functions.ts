@@ -60,18 +60,45 @@ async function handleGwError(res: Response) {
 }
 
 // ---------------------------------------------------------------------------
-// Geocode a user-entered query (ZIP, city, address) → { lat, lng, label }
+// New Orleans metro focus (V1 launch region)
+// ---------------------------------------------------------------------------
+// Rough bounding box covering New Orleans, Metairie, Kenner, Gretna, Harvey,
+// Marrero, Chalmette, Arabi, Jefferson, Westwego, Harahan, River Ridge,
+// Elmwood, Belle Chasse.
+const NOLA_BOUNDS = {
+  south: 29.82,
+  west: -90.35,
+  north: 30.15,
+  east: -89.55,
+};
+const NOLA_CENTER = { lat: 29.9511, lng: -90.0715 };
+
+export function isInNolaMetro(lat: number, lng: number) {
+  return (
+    lat >= NOLA_BOUNDS.south &&
+    lat <= NOLA_BOUNDS.north &&
+    lng >= NOLA_BOUNDS.west &&
+    lng <= NOLA_BOUNDS.east
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Geocode a user-entered query (ZIP, city, address, neighborhood) → coords
+// Biased to the New Orleans metro so ambiguous queries resolve locally.
 // ---------------------------------------------------------------------------
 export const geocodeQuery = createServerFn({ method: "POST" })
   .inputValidator((data: { query: string }) => {
     const q = String(data?.query ?? "").trim();
-    if (!q || q.length > 200) throw new Error("Enter a ZIP code, city, or address.");
+    if (!q || q.length > 200) throw new Error("Enter a ZIP code, city, address, or neighborhood.");
     return { query: q };
   })
   .handler(async ({ data }) => {
+    const bounds = `${NOLA_BOUNDS.south},${NOLA_BOUNDS.west}|${NOLA_BOUNDS.north},${NOLA_BOUNDS.east}`;
     const url =
       `${GATEWAY_URL}/maps/api/geocode/json` +
-      `?address=${encodeURIComponent(data.query)}&components=country:US`;
+      `?address=${encodeURIComponent(data.query)}` +
+      `&components=country:US` +
+      `&bounds=${encodeURIComponent(bounds)}`;
     const res = await fetch(url, { headers: gwHeaders() });
     if (!res.ok) await handleGwError(res);
     const json = (await res.json()) as {
@@ -82,73 +109,38 @@ export const geocodeQuery = createServerFn({ method: "POST" })
       }>;
     };
     if (json.status !== "OK" || !json.results.length) {
-      throw new Error("We couldn't find that location. Try a ZIP code or a city name.");
+      throw new Error("We couldn't find that location. Try a New Orleans ZIP code, neighborhood, or address.");
     }
-    const r = json.results[0];
+    // Prefer a result inside the NOLA bounding box when available.
+    const inMetro = json.results.find((r) =>
+      isInNolaMetro(r.geometry.location.lat, r.geometry.location.lng),
+    );
+    const r = inMetro ?? json.results[0];
     return {
       lat: r.geometry.location.lat,
       lng: r.geometry.location.lng,
       label: r.formatted_address,
+      inNolaMetro: isInNolaMetro(r.geometry.location.lat, r.geometry.location.lng),
     };
   });
 
-// ---------------------------------------------------------------------------
-// Business type filtering — only places where wait times matter
-// ---------------------------------------------------------------------------
-// Google Places API (New) primary types we want to surface.
-const INCLUDED_TYPES = [
-  // Grocery / retail
-  "supermarket",
-  "grocery_store",
-  "convenience_store",
-  "department_store",
-  "discount_store",
-  "warehouse_store",
-  "wholesaler",
-  "clothing_store",
-  "shoe_store",
-  "shopping_mall",
-  "electronics_store",
-  "home_improvement_store",
-  "furniture_store",
-  "book_store",
-  // Coffee / food
-  "cafe",
-  "coffee_shop",
-  "restaurant",
-  "fast_food_restaurant",
-  "meal_takeaway",
-  "bakery",
-  "sandwich_shop",
-  "pizza_restaurant",
-  "hamburger_restaurant",
-  "ice_cream_shop",
-  "bar",
-  // Finance / civic
-  "bank",
-  "atm",
-  "post_office",
-  "local_government_office",
-  "city_hall",
-  "courthouse",
-  // Health
-  "hospital",
-  "pharmacy",
-  "drugstore",
-  "medical_lab",
-  // Travel
-  "airport",
-  "gas_station",
-  // Entertainment
-  "movie_theater",
-  "amusement_park",
-  // Fitness
-  "gym",
-  "fitness_center",
-];
 
-// Types we always want to hide even if Google returns them alongside allowed types.
+// ---------------------------------------------------------------------------
+// Business type filtering — inclusive by default
+// ---------------------------------------------------------------------------
+// We do NOT restrict discovery to a whitelist anymore. Google Places returns
+// any legitimate public-facing place; we only strip out categories where
+// customers never wait in line (private residences, industrial sites,
+// contractors, warehouses, utility infrastructure, vacant land, etc.).
 const EXCLUDED_TYPES_SET = new Set([
+  // Private residences / lodging (we still allow hotels? — no, hidden per spec)
+  "premise",
+  "subpremise",
+  "residential",
+  "apartment_complex",
+  "apartment_building",
+  "housing_complex",
+  "condominium_complex",
   "lodging",
   "hotel",
   "motel",
@@ -158,20 +150,35 @@ const EXCLUDED_TYPES_SET = new Set([
   "resort_hotel",
   "campground",
   "rv_park",
-  "real_estate_agency",
-  "lawyer",
-  "accounting",
-  "insurance_agency",
+  // Contractors / trades
   "general_contractor",
   "roofing_contractor",
   "plumber",
   "electrician",
   "painter",
+  "locksmith",
   "moving_company",
+  "hvac_contractor",
+  // Industrial / manufacturing / warehousing
+  "industrial",
+  "factory",
+  "manufacturer",
+  "warehouse",
   "storage",
+  "self_storage",
+  // Utility infrastructure
+  "utility",
+  "electric_vehicle_charging_station",
+  "power_plant",
+  "water_treatment_plant",
+  // Land / raw
+  "land_plot",
+  "vacant_land",
+  "cemetery",
+  // Non-public offices (users can still add manually via search)
   "farm",
-  "food_court", // usually inside malls, low signal
 ]);
+
 
 // Category label + emoji for a given Place. Prefers primary_type.
 const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
@@ -331,7 +338,8 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       body: JSON.stringify({
         maxResultCount: 20,
         rankPreference: "DISTANCE",
-        includedTypes: INCLUDED_TYPES,
+        // No includedTypes: Google returns all public-facing places, we then
+        // filter out non-public-facing categories client-side.
         locationRestriction: {
           circle: {
             center: { latitude: data.lat, longitude: data.lng },
@@ -539,3 +547,145 @@ export const getBusinessesByIds = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
+
+// ---------------------------------------------------------------------------
+// Text search — for business names, keywords, neighborhoods.
+// Biased to the user's current coords (or the New Orleans metro by default),
+// and always restricted to a wide radius around the bias point.
+// ---------------------------------------------------------------------------
+export const searchBusinessesByText = createServerFn({ method: "POST" })
+  .inputValidator((data: { query: string; lat?: number; lng?: number }) => {
+    const query = String(data?.query ?? "").trim();
+    if (!query || query.length > 120) throw new Error("Enter a business name or keyword.");
+    const lat = Number.isFinite(Number(data?.lat)) ? Number(data!.lat) : NOLA_CENTER.lat;
+    const lng = Number.isFinite(Number(data?.lng)) ? Number(data!.lng) : NOLA_CENTER.lng;
+    return { query, lat, lng };
+  })
+  .handler(async ({ data }) => {
+    const supabase = getSupabase();
+
+    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchText`, {
+      method: "POST",
+      headers: gwHeaders({
+        "Content-Type": "application/json",
+        "X-Goog-FieldMask":
+          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
+      }),
+      body: JSON.stringify({
+        textQuery: data.query,
+        pageSize: 20,
+        locationBias: {
+          circle: {
+            center: { latitude: data.lat, longitude: data.lng },
+            radius: 40_000, // ~25 mi bias
+          },
+        },
+      }),
+    });
+    if (!res.ok) await handleGwError(res);
+    const json = (await res.json()) as {
+      places?: Array<{
+        id: string;
+        displayName?: { text: string };
+        formattedAddress?: string;
+        location?: { latitude: number; longitude: number };
+        types?: string[];
+        primaryType?: string;
+        addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
+        internationalPhoneNumber?: string;
+        photos?: Array<{ name: string }>;
+      }>;
+    };
+
+    const places = (json.places ?? []).filter(
+      (p) =>
+        p.id &&
+        p.location &&
+        p.displayName?.text &&
+        !isExcluded(p.primaryType, p.types) &&
+        isInNolaMetro(p.location.latitude, p.location.longitude),
+    );
+
+    const rows = places.map((p) => {
+      const comps = (p.addressComponents ?? []).map((c) => ({
+        types: c.types,
+        short_name: c.shortText,
+        long_name: c.longText,
+      }));
+      const cat = pickCategory(p.primaryType, p.types);
+      return {
+        google_place_id: p.id,
+        name: p.displayName!.text,
+        address: p.formattedAddress ?? null,
+        city:
+          pickAddressComponent(comps, "locality") ??
+          pickAddressComponent(comps, "sublocality") ??
+          pickAddressComponent(comps, "postal_town"),
+        state: pickAddressComponent(comps, "administrative_area_level_1", true),
+        zip: pickAddressComponent(comps, "postal_code"),
+        lat: p.location!.latitude,
+        lng: p.location!.longitude,
+        category: cat.label,
+        primary_type: cat.primary,
+        phone: p.internationalPhoneNumber ?? null,
+        logo_url: buildPhotoUrl(p.photos?.[0]?.name),
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    if (rows.length) {
+      const { error } = await supabase
+        .from("businesses")
+        .upsert(rows, { onConflict: "google_place_id" });
+      if (error) console.error("upsert businesses failed:", error);
+    }
+
+    const placeIds = rows.map((r) => r.google_place_id);
+    const { data: storedRaw, error: readErr } = await supabase
+      .from("businesses")
+      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .in("google_place_id", placeIds.length ? placeIds : ["__none__"]);
+    if (readErr) throw new Error(readErr.message);
+    const stored = (storedRaw ?? []) as Array<any>;
+
+    // Preserve Google's relevance ranking.
+    const order = new Map(placeIds.map((id, i) => [id, i]));
+    stored.sort(
+      (a, b) => (order.get(a.google_place_id) ?? 999) - (order.get(b.google_place_id) ?? 999),
+    );
+
+    const ids = stored.map((b) => b.id);
+    const { data: reportsRaw } = await supabase
+      .from("wait_reports")
+      .select("business_id, minutes, created_at, source")
+      .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
+      .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
+      .order("created_at", { ascending: false });
+    const reports = (reportsRaw ?? []) as Array<{
+      business_id: string;
+      minutes: number;
+      created_at: string;
+      source: string | null;
+    }>;
+
+    const byBiz = new Map<string, StoredReport[]>();
+    for (const r of reports) {
+      const list = byBiz.get(r.business_id) ?? [];
+      list.push({ minutes: r.minutes, created_at: r.created_at, source: r.source });
+      byBiz.set(r.business_id, list);
+    }
+
+    return stored.map((b) => {
+      const agg = aggregateReports(byBiz.get(b.id) ?? []);
+      return {
+        ...b,
+        currentMinutes: agg.current,
+        updatedMinutesAgo: agg.latest
+          ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+          : null,
+        contributors: agg.count,
+        trend: agg.trend,
+      };
+    });
+  });
+
