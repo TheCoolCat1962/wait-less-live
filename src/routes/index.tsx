@@ -25,14 +25,14 @@ function HomePage() {
     staleTime: 60_000,
   });
 
-  const sorted: BusinessWithWait[] = (nearbyQuery.data ?? [])
-    .map((b) => ({
-      ...b,
-      distanceMi: location
-        ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
-        : undefined,
-    }))
-    .sort((a, b) => (a.distanceMi ?? 0) - (b.distanceMi ?? 0));
+  // Server returns businesses already prioritized by wait likelihood; keep
+  // that order rather than re-sorting by distance.
+  const sorted: BusinessWithWait[] = (nearbyQuery.data ?? []).map((b) => ({
+    ...b,
+    distanceMi: location
+      ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
+      : undefined,
+  }));
 
   const quick = sorted
     .filter((b) => b.currentMinutes != null && b.currentMinutes <= 10)

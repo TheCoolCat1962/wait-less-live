@@ -272,9 +272,22 @@ const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
 
   movie_theater: { label: "Movie Theater", emoji: "🎬" },
   amusement_park: { label: "Theme Park", emoji: "🎢" },
+  water_park: { label: "Water Park", emoji: "🎢" },
+  tourist_attraction: { label: "Attraction", emoji: "🎡" },
+  zoo: { label: "Zoo", emoji: "🦁" },
+  aquarium: { label: "Aquarium", emoji: "🐠" },
 
   gym: { label: "Gym", emoji: "🏋️" },
   fitness_center: { label: "Gym", emoji: "🏋️" },
+
+  hair_salon: { label: "Salon", emoji: "💇" },
+  beauty_salon: { label: "Salon", emoji: "💅" },
+  barber_shop: { label: "Barber", emoji: "💈" },
+  nail_salon: { label: "Nail Salon", emoji: "💅" },
+
+  dessert_shop: { label: "Dessert", emoji: "🍨" },
+  dessert_restaurant: { label: "Dessert", emoji: "🍨" },
+  juice_shop: { label: "Juice & Smoothies", emoji: "🥤" },
 };
 
 function pickCategory(primaryType: string | undefined, types: string[] | undefined) {
@@ -291,6 +304,93 @@ function isExcluded(primaryType: string | undefined, types: string[] | undefined
   if (primaryType && EXCLUDED_TYPES_SET.has(primaryType)) return true;
   if (types?.some((t) => EXCLUDED_TYPES_SET.has(t))) return true;
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Wait-propensity: how likely a business is to have customers waiting in line.
+// Only walk-in categories where people realistically queue are listed here
+// (food, coffee, dessert/snowball stands, grocery/big-box, pharmacies, banks,
+// urgent care/hospitals, salons, post offices, theme attractions, etc.).
+// This is an allowlist: anything NOT listed — offices, contractors,
+// warehouses/industrial, residential, and appointment-only businesses
+// (doctors, dentists, lawyers, spas, etc.) — scores 0 and is excluded from
+// discovery results. Government offices are intentionally NOT blanket-listed
+// (most don't serve walk-in customers); only those whose name matches a known
+// public-counter service (DMV/OMV, driver's license, tax collector, clerk of
+// court, etc. — see WALKIN_GOV_NAME_RE) are included. Exception: a business
+// with real recent wait reports is always included regardless of category
+// (see fetchRankedNearby).
+// ---------------------------------------------------------------------------
+const WAIT_PRONE_WEIGHTS: Record<string, number> = {
+  // Food & drink (highest queue frequency)
+  restaurant: 3,
+  fast_food_restaurant: 3,
+  cafe: 3,
+  coffee_shop: 3,
+  sandwich_shop: 3,
+  pizza_restaurant: 3,
+  hamburger_restaurant: 3,
+  bakery: 3,
+  ice_cream_shop: 3,
+  dessert_shop: 3,
+  dessert_restaurant: 3,
+  juice_shop: 3,
+  meal_takeaway: 3,
+  bar: 2,
+  // Health / essential errands
+  pharmacy: 3,
+  drugstore: 3,
+  hospital: 3,
+  medical_lab: 3,
+  // Government: only post offices are reliably walk-in. Other gov offices
+  // (DMV/OMV, tax collector, clerk of court) are included by name via
+  // WALKIN_GOV_NAME_RE, not by the broad local_government_office type.
+  post_office: 3,
+  bank: 3,
+  // Grocery & big-box (Costco / Walmart / Target / warehouse clubs)
+  supermarket: 3,
+  grocery_store: 3,
+  warehouse_store: 3,
+  wholesaler: 3,
+  department_store: 2,
+  discount_store: 2,
+  shopping_mall: 2,
+  // Personal care — walk-in salons/barbers
+  hair_salon: 2,
+  beauty_salon: 2,
+  barber_shop: 2,
+  nail_salon: 2,
+  // Attractions & entertainment
+  amusement_park: 3,
+  water_park: 3,
+  tourist_attraction: 2,
+  zoo: 2,
+  aquarium: 2,
+  movie_theater: 2,
+  airport: 2,
+  gym: 2,
+  fitness_center: 2,
+};
+
+function waitPropensity(primaryType: string | null | undefined): number {
+  return (primaryType && WAIT_PRONE_WEIGHTS[primaryType]) || 0;
+}
+
+// Government offices vary wildly: DMVs and tax/court public counters have long
+// walk-in lines, while most others are appointment-only or back-office. Google
+// tags them all as local_government_office, so we detect the walk-in ones by
+// name instead of by type.
+const WALKIN_GOV_NAME_RE =
+  /\b(d\.?m\.?v\.?|o\.?m\.?v\.?|motor vehicles?|driver'?s?\s+licen[sc]e|tax collector|clerk of court|registrar of voters|passport (?:office|acceptance))\b/i;
+
+function isWalkInGovOffice(name: string | null | undefined): boolean {
+  return !!name && WALKIN_GOV_NAME_RE.test(name);
+}
+
+// Effective wait-propensity for ranking/inclusion: the category weight, or a
+// high weight for name-detected walk-in government offices.
+function effectivePropensity(b: { primary_type?: string | null; name?: string | null }): number {
+  return isWalkInGovOffice(b.name) ? 3 : waitPropensity(b.primary_type);
 }
 
 function pickAddressComponent(
@@ -399,6 +499,46 @@ async function withAggregatedWaits<T extends { id: string }>(
   });
 }
 
+// Turn a pool of nearby candidates into a wait-prioritized result set.
+// 1) Keep only wait-prone categories, plus anywhere with real recent reports —
+//    so we don't just echo back every Google place.
+// 2) Rank: places with live reports first (longest current wait, then most
+//    contributors), then by category wait-propensity, distance as tiebreaker.
+async function fetchRankedNearby<
+  T extends {
+    id: string;
+    primary_type?: string | null;
+    name?: string | null;
+    lat: number;
+    lng: number;
+  },
+>(supabase: ReturnType<typeof getSupabase>, candidates: T[], lat: number, lng: number) {
+  const near = candidates.slice(0, 60);
+  const aggregated = await withAggregatedWaits(supabase, near);
+  return aggregated
+    .map((b) => ({
+      b,
+      prop: effectivePropensity(b),
+      dist: milesBetween(lat, lng, b.lat, b.lng),
+    }))
+    .filter((x) => x.prop >= 2 || x.b.contributors > 0)
+    .sort((x, y) => {
+      const xActive = x.b.contributors > 0 ? 1 : 0;
+      const yActive = y.b.contributors > 0 ? 1 : 0;
+      if (xActive !== yActive) return yActive - xActive;
+      if (xActive) {
+        const xm = x.b.currentMinutes ?? 0;
+        const ym = y.b.currentMinutes ?? 0;
+        if (ym !== xm) return ym - xm;
+        if (y.b.contributors !== x.b.contributors) return y.b.contributors - x.b.contributors;
+      }
+      if (y.prop !== x.prop) return y.prop - x.prop;
+      return x.dist - y.dist;
+    })
+    .map((x) => x.b)
+    .slice(0, 20);
+}
+
 // ---------------------------------------------------------------------------
 // Fetch nearby businesses via Places API (New), upsert into DB, and return
 // them with aggregated wait-time data.
@@ -442,8 +582,8 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       );
       const areaFresh = newest && Date.now() - new Date(newest).getTime() < BUSINESS_CACHE_TTL_MS;
       if (areaFresh) {
-        const stored = cachedNearby.slice(0, 20).map(({ updated_at, ...b }) => b);
-        return withAggregatedWaits(supabase, stored);
+        const candidates = cachedNearby.map(({ updated_at, ...b }) => b);
+        return fetchRankedNearby(supabase, candidates, data.lat, data.lng);
       }
     }
 
@@ -527,7 +667,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
 
-    return withAggregatedWaits(supabase, stored);
+    return fetchRankedNearby(supabase, stored, data.lat, data.lng);
   });
 
 // ---------------------------------------------------------------------------
