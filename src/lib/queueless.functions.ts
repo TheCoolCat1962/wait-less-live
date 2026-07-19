@@ -22,6 +22,52 @@ function getSupabase() {
   }) as any;
 }
 
+// Serve the local `businesses` cache instead of calling Google Places when the
+// area was last synced within this window. Live wait times always come fresh
+// from `wait_reports`, so a long TTL here only avoids repeat (paid) Places calls.
+const BUSINESS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+// Shape of a cached `businesses` row (includes updated_at for freshness checks).
+type CachedBusinessRow = {
+  id: string;
+  google_place_id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  lat: number;
+  lng: number;
+  category: string | null;
+  primary_type: string | null;
+  phone: string | null;
+  logo_url: string | null;
+  updated_at: string;
+};
+
+// Rough lat/lng bounding box around a point for a radius in miles.
+function boundingBox(lat: number, lng: number, radiusMiles: number) {
+  const latDelta = radiusMiles / 69;
+  const lngDelta = radiusMiles / (69 * Math.max(Math.cos((lat * Math.PI) / 180), 0.01));
+  return {
+    south: lat - latDelta,
+    north: lat + latDelta,
+    west: lng - lngDelta,
+    east: lng + lngDelta,
+  };
+}
+
+// Haversine distance in miles (server-side copy of lib/queueless-data helper).
+function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 3958.8;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s1 = (aLat * Math.PI) / 180;
+  const s2 = (bLat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(s1) * Math.cos(s2);
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
 // ---------------------------------------------------------------------------
 // Google Maps Platform via connector gateway
 // ---------------------------------------------------------------------------
@@ -312,6 +358,47 @@ function aggregateReports(reports: StoredReport[]) {
   return { current, count: kept.length, latest, trend };
 }
 
+// Attach aggregated live-wait data (from recent wait_reports) to business rows.
+// Shared by the nearby, search and cache-serving paths so they stay identical.
+async function withAggregatedWaits<T extends { id: string }>(
+  supabase: ReturnType<typeof getSupabase>,
+  stored: T[],
+) {
+  const ids = stored.map((b) => b.id);
+  const { data: reportsRaw } = await supabase
+    .from("wait_reports")
+    .select("business_id, minutes, created_at, source")
+    .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
+    .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false });
+  const reports = (reportsRaw ?? []) as Array<{
+    business_id: string;
+    minutes: number;
+    created_at: string;
+    source: string | null;
+  }>;
+
+  const byBiz = new Map<string, StoredReport[]>();
+  for (const r of reports) {
+    const list = byBiz.get(r.business_id) ?? [];
+    list.push({ minutes: r.minutes, created_at: r.created_at, source: r.source });
+    byBiz.set(r.business_id, list);
+  }
+
+  return stored.map((b) => {
+    const agg = aggregateReports(byBiz.get(b.id) ?? []);
+    return {
+      ...b,
+      currentMinutes: agg.current,
+      updatedMinutesAgo: agg.latest
+        ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+        : null,
+      contributors: agg.count,
+      trend: agg.trend,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Fetch nearby businesses via Places API (New), upsert into DB, and return
 // them with aggregated wait-time data.
@@ -327,6 +414,38 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const supabase = getSupabase();
     const radiusMeters = Math.min(Math.round(data.radiusMiles * 1609.34), 50_000);
+
+    // Cache-first: serve businesses already stored for this area when it was
+    // synced within the freshness window; only hit Google Places when the area
+    // cache is empty or stale. Wait times are always aggregated live below.
+    const box = boundingBox(data.lat, data.lng, data.radiusMiles);
+    const { data: cachedRaw } = await supabase
+      .from("businesses")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url, updated_at",
+      )
+      .gte("lat", box.south)
+      .lte("lat", box.north)
+      .gte("lng", box.west)
+      .lte("lng", box.east);
+    const cachedNearby = ((cachedRaw ?? []) as CachedBusinessRow[])
+      .filter((b) => milesBetween(data.lat, data.lng, b.lat, b.lng) <= data.radiusMiles)
+      .sort(
+        (a, b) =>
+          milesBetween(data.lat, data.lng, a.lat, a.lng) -
+          milesBetween(data.lat, data.lng, b.lat, b.lng),
+      );
+    if (cachedNearby.length) {
+      const newest = cachedNearby.reduce(
+        (max, b) => (b.updated_at > max ? b.updated_at : max),
+        "",
+      );
+      const areaFresh = newest && Date.now() - new Date(newest).getTime() < BUSINESS_CACHE_TTL_MS;
+      if (areaFresh) {
+        const stored = cachedNearby.slice(0, 20).map(({ updated_at, ...b }) => b);
+        return withAggregatedWaits(supabase, stored);
+      }
+    }
 
     const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
       method: "POST",
@@ -408,36 +527,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
 
-    const ids = stored.map((b) => b.id);
-    const { data: reportsRaw } = await supabase
-      .from("wait_reports")
-      .select("business_id, minutes, created_at, source")
-      .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
-      .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
-      .order("created_at", { ascending: false });
-    const reports = (reportsRaw ?? []) as Array<{
-      business_id: string; minutes: number; created_at: string; source: string | null;
-    }>;
-
-    const byBiz = new Map<string, StoredReport[]>();
-    for (const r of reports) {
-      const list = byBiz.get(r.business_id) ?? [];
-      list.push({ minutes: r.minutes, created_at: r.created_at, source: r.source });
-      byBiz.set(r.business_id, list);
-    }
-
-    return stored.map((b) => {
-      const agg = aggregateReports(byBiz.get(b.id) ?? []);
-      return {
-        ...b,
-        currentMinutes: agg.current,
-        updatedMinutesAgo: agg.latest
-          ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
-          : null,
-        contributors: agg.count,
-        trend: agg.trend,
-      };
-    });
+    return withAggregatedWaits(supabase, stored);
   });
 
 // ---------------------------------------------------------------------------
@@ -564,6 +654,33 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const supabase = getSupabase();
 
+    // Cache-first: match already-cached businesses by name within the NOLA
+    // metro; only hit Google Places text search when there is no fresh match.
+    const { data: cachedRaw } = await supabase
+      .from("businesses")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url, updated_at",
+      )
+      .ilike("name", `%${data.query}%`)
+      .gte("lat", NOLA_BOUNDS.south)
+      .lte("lat", NOLA_BOUNDS.north)
+      .gte("lng", NOLA_BOUNDS.west)
+      .lte("lng", NOLA_BOUNDS.east)
+      .limit(20);
+    const cachedFresh = ((cachedRaw ?? []) as CachedBusinessRow[]).filter(
+      (b) => Date.now() - new Date(b.updated_at).getTime() < BUSINESS_CACHE_TTL_MS,
+    );
+    if (cachedFresh.length) {
+      const stored = cachedFresh
+        .map(({ updated_at, ...b }) => b)
+        .sort(
+          (a, b) =>
+            milesBetween(data.lat, data.lng, a.lat, a.lng) -
+            milesBetween(data.lat, data.lng, b.lat, b.lng),
+        );
+      return withAggregatedWaits(supabase, stored);
+    }
+
     const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchText`, {
       method: "POST",
       headers: gwHeaders({
@@ -654,38 +771,6 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
       (a, b) => (order.get(a.google_place_id) ?? 999) - (order.get(b.google_place_id) ?? 999),
     );
 
-    const ids = stored.map((b) => b.id);
-    const { data: reportsRaw } = await supabase
-      .from("wait_reports")
-      .select("business_id, minutes, created_at, source")
-      .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
-      .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
-      .order("created_at", { ascending: false });
-    const reports = (reportsRaw ?? []) as Array<{
-      business_id: string;
-      minutes: number;
-      created_at: string;
-      source: string | null;
-    }>;
-
-    const byBiz = new Map<string, StoredReport[]>();
-    for (const r of reports) {
-      const list = byBiz.get(r.business_id) ?? [];
-      list.push({ minutes: r.minutes, created_at: r.created_at, source: r.source });
-      byBiz.set(r.business_id, list);
-    }
-
-    return stored.map((b) => {
-      const agg = aggregateReports(byBiz.get(b.id) ?? []);
-      return {
-        ...b,
-        currentMinutes: agg.current,
-        updatedMinutesAgo: agg.latest
-          ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
-          : null,
-        contributors: agg.count,
-        trend: agg.trend,
-      };
-    });
+    return withAggregatedWaits(supabase, stored);
   });
 
