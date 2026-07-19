@@ -21,6 +21,16 @@ function SearchPage() {
   const [category, setCategory] = useState<string>("All");
   const { location } = useLocation();
 
+  // NOLA metro bounds (kept in sync with server). The nearby list is only
+  // available in the launch region; name search stays available everywhere
+  // (it returns NOLA-area results only, enforced server-side).
+  const inNola = location
+    ? location.coords.lat >= 29.82 &&
+      location.coords.lat <= 30.15 &&
+      location.coords.lng >= -90.35 &&
+      location.coords.lng <= -89.55
+    : true;
+
   // Debounce the query so we don't hit Places on every keystroke.
   useEffect(() => {
     const t = setTimeout(() => setQ(raw.trim()), 300);
@@ -29,7 +39,7 @@ function SearchPage() {
 
   const nearbyQuery = useQuery({
     queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
-    enabled: !!location,
+    enabled: !!location && inNola,
     queryFn: () =>
       fetchNearbyBusinesses({
         data: {
@@ -137,7 +147,9 @@ function SearchPage() {
             <p className="mt-12 text-center text-sm text-muted-foreground">
               {q.length >= 2
                 ? `No New Orleans-area places match "${q}".`
-                : "No places nearby yet."}
+                : !inNola
+                  ? "QueueLess is currently available only in the New Orleans metro area. Search by name to find places in the metro."
+                  : "No places nearby yet."}
             </p>
           ) : (
             filtered.map((b) => <BusinessCard key={b.id} business={b} />)
