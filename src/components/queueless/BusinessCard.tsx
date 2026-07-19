@@ -2,10 +2,10 @@ import { Link } from "@tanstack/react-router";
 import { Star, Plus } from "lucide-react";
 import {
   type BusinessWithWait,
-  emojiForBusiness,
   formatUpdated,
   trendLabel,
 } from "@/lib/queueless-data";
+import { BusinessImage } from "./BusinessImage";
 import { WaitBadge } from "./WaitBadge";
 import { useFavorites } from "@/lib/favorites";
 import { useReportSheet } from "./ReportSheetContext";
@@ -22,17 +22,8 @@ export function BusinessCard({ business }: { business: BusinessWithWait }) {
       className="group block rounded-2xl border border-border bg-surface p-4 shadow-sm transition-transform active:scale-[0.99]"
     >
       <div className="flex gap-4">
-        <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-surface-muted text-2xl">
-          {business.logo_url ? (
-            <img
-              src={business.logo_url}
-              alt=""
-              className="size-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <span aria-hidden>{emojiForBusiness(business)}</span>
-          )}
+        <div className="size-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
+          <BusinessImage business={business} width={160} emojiClassName="text-2xl" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
