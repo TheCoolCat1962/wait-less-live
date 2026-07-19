@@ -71,14 +71,10 @@ function SearchPage() {
   }, [list]);
 
   const filtered = useMemo(() => {
-    return list
-      .filter((b) => (category === "All" ? true : b.category === category))
-      .sort((a, b) => {
-        // On name search, keep Places relevance order; else sort by distance.
-        if (q.length >= 2) return 0;
-        return (a.distanceMi ?? 0) - (b.distanceMi ?? 0);
-      });
-  }, [category, list, q]);
+    // Preserve server order: Places relevance for name search, wait-priority
+    // ranking for the nearby (empty-query) list.
+    return list.filter((b) => (category === "All" ? true : b.category === category));
+  }, [category, list]);
 
   return (
     <AppShell>

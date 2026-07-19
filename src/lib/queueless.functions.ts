@@ -293,6 +293,53 @@ function isExcluded(primaryType: string | undefined, types: string[] | undefined
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Wait-propensity: how likely a business is to have customers waiting in line.
+// Used to prioritize nearby discovery toward places where waits actually
+// happen (food, pharmacies, banks, gov offices, big-box, etc.) instead of
+// returning every public place Google reports. Categories not listed here
+// (gas stations, ATMs, convenience/specialty retail, generic "Place") score 0
+// and are only surfaced when they have real recent wait reports.
+// ---------------------------------------------------------------------------
+const WAIT_PRONE_WEIGHTS: Record<string, number> = {
+  restaurant: 3,
+  fast_food_restaurant: 3,
+  cafe: 3,
+  coffee_shop: 3,
+  sandwich_shop: 3,
+  pizza_restaurant: 3,
+  hamburger_restaurant: 3,
+  bakery: 3,
+  ice_cream_shop: 3,
+  meal_takeaway: 3,
+  bar: 2,
+  pharmacy: 3,
+  drugstore: 3,
+  hospital: 3,
+  medical_lab: 3,
+  bank: 3,
+  post_office: 3,
+  local_government_office: 2,
+  city_hall: 2,
+  courthouse: 2,
+  supermarket: 2,
+  grocery_store: 2,
+  department_store: 2,
+  warehouse_store: 2,
+  wholesaler: 2,
+  discount_store: 2,
+  shopping_mall: 2,
+  movie_theater: 2,
+  amusement_park: 2,
+  airport: 2,
+  gym: 2,
+  fitness_center: 2,
+};
+
+function waitPropensity(primaryType: string | null | undefined): number {
+  return (primaryType && WAIT_PRONE_WEIGHTS[primaryType]) || 0;
+}
+
 function pickAddressComponent(
   components: Array<{ types: string[]; short_name?: string; long_name?: string }> | undefined,
   type: string,
@@ -399,6 +446,40 @@ async function withAggregatedWaits<T extends { id: string }>(
   });
 }
 
+// Turn a pool of nearby candidates into a wait-prioritized result set.
+// 1) Keep only wait-prone categories, plus anywhere with real recent reports —
+//    so we don't just echo back every Google place.
+// 2) Rank: places with live reports first (longest current wait, then most
+//    contributors), then by category wait-propensity, distance as tiebreaker.
+async function fetchRankedNearby<
+  T extends { id: string; primary_type?: string | null; lat: number; lng: number },
+>(supabase: ReturnType<typeof getSupabase>, candidates: T[], lat: number, lng: number) {
+  const near = candidates.slice(0, 60);
+  const aggregated = await withAggregatedWaits(supabase, near);
+  return aggregated
+    .map((b) => ({
+      b,
+      prop: waitPropensity(b.primary_type),
+      dist: milesBetween(lat, lng, b.lat, b.lng),
+    }))
+    .filter((x) => x.prop >= 2 || x.b.contributors > 0)
+    .sort((x, y) => {
+      const xActive = x.b.contributors > 0 ? 1 : 0;
+      const yActive = y.b.contributors > 0 ? 1 : 0;
+      if (xActive !== yActive) return yActive - xActive;
+      if (xActive) {
+        const xm = x.b.currentMinutes ?? 0;
+        const ym = y.b.currentMinutes ?? 0;
+        if (ym !== xm) return ym - xm;
+        if (y.b.contributors !== x.b.contributors) return y.b.contributors - x.b.contributors;
+      }
+      if (y.prop !== x.prop) return y.prop - x.prop;
+      return x.dist - y.dist;
+    })
+    .map((x) => x.b)
+    .slice(0, 20);
+}
+
 // ---------------------------------------------------------------------------
 // Fetch nearby businesses via Places API (New), upsert into DB, and return
 // them with aggregated wait-time data.
@@ -442,8 +523,8 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       );
       const areaFresh = newest && Date.now() - new Date(newest).getTime() < BUSINESS_CACHE_TTL_MS;
       if (areaFresh) {
-        const stored = cachedNearby.slice(0, 20).map(({ updated_at, ...b }) => b);
-        return withAggregatedWaits(supabase, stored);
+        const candidates = cachedNearby.map(({ updated_at, ...b }) => b);
+        return fetchRankedNearby(supabase, candidates, data.lat, data.lng);
       }
     }
 
@@ -527,7 +608,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
 
-    return withAggregatedWaits(supabase, stored);
+    return fetchRankedNearby(supabase, stored, data.lat, data.lng);
   });
 
 // ---------------------------------------------------------------------------
