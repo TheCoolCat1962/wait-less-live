@@ -310,12 +310,16 @@ function isExcluded(primaryType: string | undefined, types: string[] | undefined
 // Wait-propensity: how likely a business is to have customers waiting in line.
 // Only walk-in categories where people realistically queue are listed here
 // (food, coffee, dessert/snowball stands, grocery/big-box, pharmacies, banks,
-// DMV/gov, urgent care/hospitals, salons, post offices, theme attractions,
-// etc.). This is an allowlist: anything NOT listed — offices, contractors,
+// urgent care/hospitals, salons, post offices, theme attractions, etc.).
+// This is an allowlist: anything NOT listed — offices, contractors,
 // warehouses/industrial, residential, and appointment-only businesses
 // (doctors, dentists, lawyers, spas, etc.) — scores 0 and is excluded from
-// discovery results. Exception: a business with real recent wait reports is
-// always included regardless of category (see fetchRankedNearby).
+// discovery results. Government offices are intentionally NOT blanket-listed
+// (most don't serve walk-in customers); only those whose name matches a known
+// public-counter service (DMV/OMV, driver's license, tax collector, clerk of
+// court, etc. — see WALKIN_GOV_NAME_RE) are included. Exception: a business
+// with real recent wait reports is always included regardless of category
+// (see fetchRankedNearby).
 // ---------------------------------------------------------------------------
 const WAIT_PRONE_WEIGHTS: Record<string, number> = {
   // Food & drink (highest queue frequency)
@@ -338,11 +342,10 @@ const WAIT_PRONE_WEIGHTS: Record<string, number> = {
   drugstore: 3,
   hospital: 3,
   medical_lab: 3,
-  // Government (DMV, post office, etc. — notoriously long lines)
-  local_government_office: 3,
+  // Government: only post offices are reliably walk-in. Other gov offices
+  // (DMV/OMV, tax collector, clerk of court) are included by name via
+  // WALKIN_GOV_NAME_RE, not by the broad local_government_office type.
   post_office: 3,
-  city_hall: 2,
-  courthouse: 2,
   bank: 3,
   // Grocery & big-box (Costco / Walmart / Target / warehouse clubs)
   supermarket: 3,
@@ -371,6 +374,23 @@ const WAIT_PRONE_WEIGHTS: Record<string, number> = {
 
 function waitPropensity(primaryType: string | null | undefined): number {
   return (primaryType && WAIT_PRONE_WEIGHTS[primaryType]) || 0;
+}
+
+// Government offices vary wildly: DMVs and tax/court public counters have long
+// walk-in lines, while most others are appointment-only or back-office. Google
+// tags them all as local_government_office, so we detect the walk-in ones by
+// name instead of by type.
+const WALKIN_GOV_NAME_RE =
+  /\b(d\.?m\.?v\.?|o\.?m\.?v\.?|motor vehicles?|driver'?s?\s+licen[sc]e|tax collector|clerk of court|registrar of voters|passport (?:office|acceptance))\b/i;
+
+function isWalkInGovOffice(name: string | null | undefined): boolean {
+  return !!name && WALKIN_GOV_NAME_RE.test(name);
+}
+
+// Effective wait-propensity for ranking/inclusion: the category weight, or a
+// high weight for name-detected walk-in government offices.
+function effectivePropensity(b: { primary_type?: string | null; name?: string | null }): number {
+  return isWalkInGovOffice(b.name) ? 3 : waitPropensity(b.primary_type);
 }
 
 function pickAddressComponent(
@@ -485,14 +505,20 @@ async function withAggregatedWaits<T extends { id: string }>(
 // 2) Rank: places with live reports first (longest current wait, then most
 //    contributors), then by category wait-propensity, distance as tiebreaker.
 async function fetchRankedNearby<
-  T extends { id: string; primary_type?: string | null; lat: number; lng: number },
+  T extends {
+    id: string;
+    primary_type?: string | null;
+    name?: string | null;
+    lat: number;
+    lng: number;
+  },
 >(supabase: ReturnType<typeof getSupabase>, candidates: T[], lat: number, lng: number) {
   const near = candidates.slice(0, 60);
   const aggregated = await withAggregatedWaits(supabase, near);
   return aggregated
     .map((b) => ({
       b,
-      prop: waitPropensity(b.primary_type),
+      prop: effectivePropensity(b),
       dist: milesBetween(lat, lng, b.lat, b.lng),
     }))
     .filter((x) => x.prop >= 2 || x.b.contributors > 0)
