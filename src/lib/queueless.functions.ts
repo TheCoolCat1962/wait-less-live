@@ -128,6 +128,18 @@ export function isInNolaMetro(lat: number, lng: number) {
   );
 }
 
+// Whether a lat/lng bounding box overlaps the NOLA launch region at all. Used to
+// skip out-of-region nearby lookups (e.g. a user in Covington whose radius never
+// reaches the metro) instead of returning/fetching businesses outside the region.
+function boxIntersectsNola(box: { south: number; north: number; west: number; east: number }) {
+  return (
+    box.south <= NOLA_BOUNDS.north &&
+    box.north >= NOLA_BOUNDS.south &&
+    box.west <= NOLA_BOUNDS.east &&
+    box.east >= NOLA_BOUNDS.west
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Geocode a user-entered query (ZIP, city, address, neighborhood) → coords
 // Biased to the New Orleans metro so ambiguous queries resolve locally.
@@ -569,7 +581,11 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       .gte("lng", box.west)
       .lte("lng", box.east);
     const cachedNearby = ((cachedRaw ?? []) as CachedBusinessRow[])
-      .filter((b) => milesBetween(data.lat, data.lng, b.lat, b.lng) <= data.radiusMiles)
+      .filter(
+        (b) =>
+          isInNolaMetro(b.lat, b.lng) &&
+          milesBetween(data.lat, data.lng, b.lat, b.lng) <= data.radiusMiles,
+      )
       .sort(
         (a, b) =>
           milesBetween(data.lat, data.lng, a.lat, a.lng) -
@@ -586,6 +602,11 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         return fetchRankedNearby(supabase, candidates, data.lat, data.lng);
       }
     }
+
+    // Outside the launch region: if the search radius never reaches the NOLA
+    // metro, return nothing rather than fetching out-of-region places from
+    // Google (e.g. a user in Covington should not see Covington businesses).
+    if (!boxIntersectsNola(box)) return [];
 
     const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
       method: "POST",
@@ -622,7 +643,12 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       }>;
     };
     const places = (json.places ?? []).filter(
-      (p) => p.id && p.location && p.displayName?.text && !isExcluded(p.primaryType, p.types),
+      (p) =>
+        p.id &&
+        p.location &&
+        p.displayName?.text &&
+        !isExcluded(p.primaryType, p.types) &&
+        isInNolaMetro(p.location.latitude, p.location.longitude),
     );
 
     const rows = places.map((p) => {

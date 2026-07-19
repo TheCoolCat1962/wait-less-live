@@ -15,9 +15,18 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const { status, location, clear } = useLocation();
 
+  // NOLA metro bounds (kept in sync with server). Only the launch region is
+  // supported, so we don't query for out-of-region locations.
+  const inNola = location
+    ? location.coords.lat >= 29.82 &&
+      location.coords.lat <= 30.15 &&
+      location.coords.lng >= -90.35 &&
+      location.coords.lng <= -89.55
+    : true;
+
   const nearbyQuery = useQuery({
     queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
-    enabled: !!location,
+    enabled: !!location && inNola,
     queryFn: () =>
       fetchNearbyBusinesses({
         data: { lat: location!.coords.lat, lng: location!.coords.lng, radiusMiles: 25 },
@@ -40,14 +49,6 @@ function HomePage() {
 
   const showPrompt =
     status === "idle" || status === "error" || (status === "prompting" && !location);
-
-  // NOLA metro bounds (kept in sync with server).
-  const inNola = location
-    ? location.coords.lat >= 29.82 &&
-      location.coords.lat <= 30.15 &&
-      location.coords.lng >= -90.35 &&
-      location.coords.lng <= -89.55
-    : true;
 
   return (
     <AppShell>
@@ -79,16 +80,20 @@ function HomePage() {
             </button>
           )}
         </div>
-        {location && !inNola && (
-          <p className="mt-3 rounded-xl bg-brand/10 px-3 py-2 text-[11px] font-semibold text-brand">
-            QueueLess is launching in New Orleans first. You're outside the
-            metro — coverage in your area is coming soon.
-          </p>
-        )}
-
       </header>
 
-      {location ? (
+      {location && !inNola ? (
+        <main className="px-5 py-16 text-center">
+          <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-brand/10">
+            <MapPin className="size-7 text-brand" />
+          </div>
+          <h2 className="mb-2 text-lg font-extrabold">Not in your area yet</h2>
+          <p className="mx-auto max-w-xs text-sm text-muted-foreground">
+            QueueLess is currently available only in the New Orleans metro area.
+            We're expanding soon — check back for live wait times near you.
+          </p>
+        </main>
+      ) : location ? (
         <main className="space-y-6 px-5 py-6">
           {nearbyQuery.isLoading && (
             <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
