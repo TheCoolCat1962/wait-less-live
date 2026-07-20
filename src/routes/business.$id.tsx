@@ -2,14 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock, MapPin, Star, Users, Loader2, Plus, Timer } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
+import { BusinessImage } from "@/components/queueless/BusinessImage";
 import { WaitBadge } from "@/components/queueless/WaitBadge";
-import {
-  crowdLabel,
-  emojiForBusiness,
-  formatUpdated,
-  toneFromMinutes,
-  trendLabel,
-} from "@/lib/queueless-data";
+import { crowdLabel, formatUpdated, toneFromMinutes, trendLabel } from "@/lib/queueless-data";
 import { useFavorites } from "@/lib/favorites";
 import { useReportSheet } from "@/components/queueless/ReportSheetContext";
 import { getBusinessWithReports } from "@/lib/queueless.functions";
@@ -104,14 +99,14 @@ function BusinessPage() {
         </button>
       </header>
 
+      <div className="aspect-[16/9] w-full overflow-hidden bg-surface-muted">
+        <BusinessImage business={business} width={800} emojiClassName="text-6xl" eager />
+      </div>
+
       <section className={`bg-gradient-to-b ${toneBg[tone]} px-5 pb-8 pt-6`}>
         <div className="flex items-center gap-3">
-          <div className="grid size-14 place-items-center overflow-hidden rounded-2xl bg-surface text-2xl shadow-sm">
-            {business.logo_url ? (
-              <img src={business.logo_url} alt="" className="size-full object-cover" />
-            ) : (
-              emojiForBusiness(business)
-            )}
+          <div className="size-14 shrink-0 overflow-hidden rounded-2xl bg-surface shadow-sm">
+            <BusinessImage business={business} width={128} emojiClassName="text-2xl" />
           </div>
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">

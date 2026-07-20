@@ -129,6 +129,16 @@ export function emojiForCategory(category: string): string {
   return emojiForBusiness({ primary_type: null, category });
 }
 
+// Cached Google Places photo URLs bake in a size (maxWidthPx). Reuse the cached
+// reference but request the width we actually render — small for cards, larger
+// for detail heroes — so we stay crisp without any extra Places API lookups.
+export function photoUrlForWidth(url: string | null | undefined, width: number): string | null {
+  if (!url) return null;
+  return /maxWidthPx=\d+/.test(url)
+    ? url.replace(/maxWidthPx=\d+/, `maxWidthPx=${Math.round(width)}`)
+    : url;
+}
+
 // Haversine distance in miles
 export function distanceMiles(a: Coords, b: Coords): number {
   const R = 3958.8;

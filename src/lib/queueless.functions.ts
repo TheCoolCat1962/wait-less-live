@@ -420,7 +420,8 @@ function buildPhotoUrl(photoName: string | undefined): string | null {
   const browserKey = process.env.GOOGLE_MAPS_BROWSER_KEY;
   if (!browserKey) return null;
   // Browser key is authorized for Places API (New); safe to embed in <img src>.
-  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=128&skipHttpRedirect=false&key=${browserKey}`;
+  // Cache at a card/hero-friendly width; the client rewrites maxWidthPx per use.
+  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&skipHttpRedirect=false&key=${browserKey}`;
 }
 
 // ---------------------------------------------------------------------------
