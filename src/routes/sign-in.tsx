@@ -1,7 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/auth";
 import {
   LogIn,
   Mail,
@@ -10,6 +9,7 @@ import {
   Eye,
   EyeOff,
   ArrowLeft,
+  CheckCircle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/sign-in")({
@@ -18,6 +18,7 @@ export const Route = createFileRoute("/sign-in")({
 
 function SignInPage() {
   const navigate = useNavigate();
+  const { user, signIn, signUp, loading: authLoading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +26,13 @@ function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate({ to: "/profile" });
+    }
+  }, [user, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,21 +42,19 @@ function SignInPage() {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
+        const { error } = await signUp(email, password);
         if (error) throw error;
         setSuccessMessage(
           "Account created! Check your email to confirm your account."
         );
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error } = await signIn(email, password);
         if (error) throw error;
-        navigate({ to: "/profile" });
+        setSuccessMessage("Successfully signed in!");
+        // Small delay to show success message before navigating
+        setTimeout(() => {
+          navigate({ to: "/profile" });
+        }, 500);
       }
     } catch (err) {
       setError((err as Error).message || "An error occurred");
@@ -88,7 +94,8 @@ function SignInPage() {
 
         {/* Success Message */}
         {successMessage && (
-          <div className="mb-4 rounded-xl border border-safe/30 bg-safe/10 p-4">
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-safe/30 bg-safe/10 p-4">
+            <CheckCircle className="size-5 text-safe" />
             <p className="text-sm font-medium text-safe">{successMessage}</p>
           </div>
         )}
@@ -118,7 +125,8 @@ function SignInPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-4 text-sm font-medium placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                disabled={loading}
+                className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-4 text-sm font-medium placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
               />
             </div>
           </div>
@@ -140,12 +148,14 @@ function SignInPage() {
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-12 text-sm font-medium placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                disabled={loading}
+                className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-12 text-sm font-medium placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                disabled={loading}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               >
                 {showPassword ? (
                   <EyeOff className="size-4" />
@@ -158,7 +168,7 @@ function SignInPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || authLoading}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3.5 text-sm font-bold text-brand-foreground shadow-lg shadow-brand/30 transition-all hover:bg-brand/90 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
           >
             {loading ? (
@@ -184,7 +194,8 @@ function SignInPage() {
               setError(null);
               setSuccessMessage(null);
             }}
-            className="font-bold text-brand hover:underline"
+            disabled={loading}
+            className="font-bold text-brand hover:underline disabled:opacity-50"
           >
             {isSignUp ? "Sign in" : "Create account"}
           </button>

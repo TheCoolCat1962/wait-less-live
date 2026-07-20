@@ -16,6 +16,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -109,6 +110,7 @@ const sections: SettingSection[] = [
 
 function SettingsPage() {
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<Record<string, boolean>>({
     dark_mode: false,
@@ -129,8 +131,7 @@ function SettingsPage() {
     if (!confirm("Are you sure you want to sign out?")) return;
     setLoading(true);
     try {
-      // Simulate sign out
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await signOut();
       navigate({ to: "/profile" });
     } finally {
       setLoading(false);

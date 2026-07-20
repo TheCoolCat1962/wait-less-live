@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ReportSheetProvider } from "../components/queueless/ReportSheetContext";
 import { LocationProvider } from "../lib/location";
+import { AuthProvider } from "../lib/auth";
 
 function NotFoundComponent() {
   return (
@@ -130,12 +131,14 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <LocationProvider>
-        <ReportSheetProvider>
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-          <Outlet />
-        </ReportSheetProvider>
-      </LocationProvider>
+      <AuthProvider>
+        <LocationProvider>
+          <ReportSheetProvider>
+            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+            <Outlet />
+          </ReportSheetProvider>
+        </LocationProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
