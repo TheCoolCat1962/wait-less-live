@@ -1,7 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 const STORAGE_KEY = "queueless.settings.v1";
+
+// Create a generic Supabase client for settings (bypassing typed client)
+function getSupabaseClient() {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return null;
+  return createSupabaseClient(url, key);
+}
 
 export interface AppSettings {
   dark_mode: boolean;
@@ -42,7 +50,10 @@ function writeLocal(settings: AppSettings) {
 // Load settings from Supabase for authenticated users
 async function loadFromSupabase(userId: string): Promise<AppSettings | null> {
   try {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    if (!client) return null;
+    
+    const { data, error } = await client
       .from("user_settings")
       .select("*")
       .eq("user_id", userId)
@@ -55,12 +66,12 @@ async function loadFromSupabase(userId: string): Promise<AppSettings | null> {
     
     if (data) {
       return {
-        dark_mode: data.dark_mode ?? DEFAULT_SETTINGS.dark_mode,
-        push_notifications: data.push_notifications ?? DEFAULT_SETTINGS.push_notifications,
-        email_notifications: data.email_notifications ?? DEFAULT_SETTINGS.email_notifications,
-        location_accuracy: data.location_accuracy ?? DEFAULT_SETTINGS.location_accuracy,
-        show_in_leaderboard: data.show_in_leaderboard ?? DEFAULT_SETTINGS.show_in_leaderboard,
-        allow_analytics: data.allow_analytics ?? DEFAULT_SETTINGS.allow_analytics,
+        dark_mode: (data as any).dark_mode ?? DEFAULT_SETTINGS.dark_mode,
+        push_notifications: (data as any).push_notifications ?? DEFAULT_SETTINGS.push_notifications,
+        email_notifications: (data as any).email_notifications ?? DEFAULT_SETTINGS.email_notifications,
+        location_accuracy: (data as any).location_accuracy ?? DEFAULT_SETTINGS.location_accuracy,
+        show_in_leaderboard: (data as any).show_in_leaderboard ?? DEFAULT_SETTINGS.show_in_leaderboard,
+        allow_analytics: (data as any).allow_analytics ?? DEFAULT_SETTINGS.allow_analytics,
       };
     }
     return null;
@@ -73,7 +84,10 @@ async function loadFromSupabase(userId: string): Promise<AppSettings | null> {
 // Save settings to Supabase for authenticated users
 async function saveToSupabase(userId: string, settings: AppSettings): Promise<boolean> {
   try {
-    const { error } = await supabase
+    const client = getSupabaseClient();
+    if (!client) return false;
+    
+    const { error } = await client
       .from("user_settings")
       .upsert({
         user_id: userId,
@@ -94,12 +108,26 @@ async function saveToSupabase(userId: string, settings: AppSettings): Promise<bo
   }
 }
 
+// Get current user from Supabase
+async function getCurrentUser() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data } = await client.auth.getUser();
+  return data?.user ?? null;
+}
+
 export function useSettings() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const userIdRef = useRef<string | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clientRef = useRef<ReturnType<typeof createSupabaseClient> | null>(null);
+
+  // Initialize Supabase client
+  useEffect(() => {
+    clientRef.current = getSupabaseClient();
+  }, []);
 
   // Initialize settings
   useEffect(() => {
@@ -110,7 +138,7 @@ export function useSettings() {
       setReady(true);
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getCurrentUser();
       
       if (user) {
         userIdRef.current = user.id;
@@ -128,33 +156,38 @@ export function useSettings() {
     init();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[Settings] Auth state changed:", event);
-      
-      if (event === "SIGNED_IN" && session?.user) {
-        userIdRef.current = session.user.id;
-        // Reload settings when user signs in
-        const remote = await loadFromSupabase(session.user.id);
-        if (remote) {
-          setSettings(remote);
-          writeLocal(remote);
+    const client = clientRef.current;
+    if (client) {
+      const { data: { subscription } } = client.auth.onAuthStateChange(async (event, session) => {
+        console.log("[Settings] Auth state changed:", event);
+        
+        if (event === "SIGNED_IN" && session?.user) {
+          userIdRef.current = session.user.id;
+          // Reload settings when user signs in
+          const remote = await loadFromSupabase(session.user.id);
+          if (remote) {
+            setSettings(remote);
+            writeLocal(remote);
+          }
+        } else if (event === "SIGNED_OUT") {
+          userIdRef.current = null;
         }
-      } else if (event === "SIGNED_OUT") {
-        userIdRef.current = null;
-      }
-    });
+      });
 
-    // Listen for local storage changes
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, []);
+
+  // Listen for local storage changes
+  useEffect(() => {
     const handleStorage = () => {
       const local = readLocal();
       setSettings(local);
     };
     window.addEventListener("storage", handleStorage);
-
-    return () => {
-      subscription.unsubscribe();
-      window.removeEventListener("storage", handleStorage);
-    };
+    return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
   // Debounced save function
