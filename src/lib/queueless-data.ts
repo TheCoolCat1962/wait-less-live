@@ -101,6 +101,70 @@ const PRIMARY_TYPE_EMOJI: Record<string, string> = {
   gym: "🏋️", fitness_center: "🏋️",
 };
 
+// Category-specific gradient colors for placeholder backgrounds
+const PRIMARY_TYPE_GRADIENT: Record<string, { from: string; to: string }> = {
+  supermarket: { from: "from-emerald-500/20", to: "to-emerald-600/10" },
+  grocery_store: { from: "from-emerald-500/20", to: "to-emerald-600/10" },
+  convenience_store: { from: "from-orange-500/20", to: "to-orange-600/10" },
+  department_store: { from: "from-purple-500/20", to: "to-purple-600/10" },
+  discount_store: { from: "from-blue-500/20", to: "to-blue-600/10" },
+  shopping_mall: { from: "from-pink-500/20", to: "to-pink-600/10" },
+  warehouse_store: { from: "from-amber-500/20", to: "to-amber-600/10" },
+  clothing_store: { from: "from-rose-500/20", to: "to-rose-600/10" },
+  shoe_store: { from: "from-indigo-500/20", to: "to-indigo-600/10" },
+  electronics_store: { from: "from-cyan-500/20", to: "to-cyan-600/10" },
+  home_improvement_store: { from: "from-orange-500/20", to: "to-orange-600/10" },
+  furniture_store: { from: "from-yellow-500/20", to: "to-yellow-600/10" },
+  book_store: { from: "from-amber-500/20", to: "to-amber-600/10" },
+  cafe: { from: "from-amber-500/20", to: "to-amber-600/10" },
+  coffee_shop: { from: "from-amber-500/20", to: "to-amber-600/10" },
+  restaurant: { from: "from-red-500/20", to: "to-red-600/10" },
+  fast_food_restaurant: { from: "from-yellow-500/20", to: "to-yellow-600/10" },
+  meal_takeaway: { from: "from-orange-500/20", to: "to-orange-600/10" },
+  bakery: { from: "from-amber-500/20", to: "to-amber-600/10" },
+  sandwich_shop: { from: "from-green-500/20", to: "to-green-600/10" },
+  pizza_restaurant: { from: "from-red-500/20", to: "to-red-600/10" },
+  hamburger_restaurant: { from: "from-yellow-500/20", to: "to-yellow-600/10" },
+  ice_cream_shop: { from: "from-pink-500/20", to: "to-pink-600/10" },
+  bar: { from: "from-purple-500/20", to: "to-purple-600/10" },
+  bank: { from: "from-slate-500/20", to: "to-slate-600/10" },
+  atm: { from: "from-slate-500/20", to: "to-slate-600/10" },
+  post_office: { from: "from-blue-500/20", to: "to-blue-600/10" },
+  local_government_office: { from: "from-slate-500/20", to: "to-slate-600/10" },
+  city_hall: { from: "from-slate-500/20", to: "to-slate-600/10" },
+  courthouse: { from: "from-slate-500/20", to: "to-slate-600/10" },
+  hospital: { from: "from-red-500/20", to: "to-red-600/10" },
+  pharmacy: { from: "from-blue-500/20", to: "to-blue-600/10" },
+  drugstore: { from: "from-blue-500/20", to: "to-blue-600/10" },
+  medical_lab: { from: "from-teal-500/20", to: "to-teal-600/10" },
+  airport: { from: "from-sky-500/20", to: "to-sky-600/10" },
+  gas_station: { from: "from-gray-500/20", to: "to-gray-600/10" },
+  movie_theater: { from: "from-indigo-500/20", to: "to-indigo-600/10" },
+  amusement_park: { from: "from-violet-500/20", to: "to-violet-600/10" },
+  gym: { from: "from-orange-500/20", to: "to-orange-600/10" },
+  fitness_center: { from: "from-orange-500/20", to: "to-orange-600/10" },
+};
+
+export function gradientForBusiness(b: Pick<Business, "primary_type" | "category">): { from: string; to: string } {
+  // Check primary type first
+  if (b.primary_type && PRIMARY_TYPE_GRADIENT[b.primary_type]) {
+    return PRIMARY_TYPE_GRADIENT[b.primary_type];
+  }
+  // Fall back to category
+  const key = (b.category ?? "").toLowerCase();
+  if (key.includes("grocery")) return { from: "from-emerald-500/20", to: "to-emerald-600/10" };
+  if (key.includes("coffee") || key.includes("cafe")) return { from: "from-amber-500/20", to: "to-amber-600/10" };
+  if (key.includes("fast food") || key.includes("burger")) return { from: "from-yellow-500/20", to: "to-yellow-600/10" };
+  if (key.includes("pizza")) return { from: "from-red-500/20", to: "to-red-600/10" };
+  if (key.includes("restaurant") || key.includes("takeout") || key.includes("food")) return { from: "from-red-500/20", to: "to-red-600/10" };
+  if (key.includes("pharmacy")) return { from: "from-blue-500/20", to: "to-blue-600/10" };
+  if (key.includes("bank")) return { from: "from-slate-500/20", to: "to-slate-600/10" };
+  if (key.includes("hospital") || key.includes("urgent")) return { from: "from-red-500/20", to: "to-red-600/10" };
+  if (key.includes("mall") || key.includes("department") || key.includes("retail") || key.includes("store")) return { from: "from-purple-500/20", to: "to-purple-600/10" };
+  // Default fallback
+  return { from: "from-brand/15", to: "to-surface-muted" };
+}
+
 export function emojiForBusiness(b: Pick<Business, "primary_type" | "category">): string {
   if (b.primary_type && PRIMARY_TYPE_EMOJI[b.primary_type]) return PRIMARY_TYPE_EMOJI[b.primary_type];
   const key = (b.category ?? "").toLowerCase();

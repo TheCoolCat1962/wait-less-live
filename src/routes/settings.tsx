@@ -132,6 +132,7 @@ function SettingsPage() {
     setLoading(true);
     try {
       await signOut();
+      console.log("[Settings] Sign out completed, navigating to profile");
       navigate({ to: "/profile" });
     } finally {
       setLoading(false);
