@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Award, Bell, ChevronRight, LogIn, Settings, Star } from "lucide-react";
+import { Award, Bell, ChevronRight, LogIn, Settings, Star, Loader2, LogOut } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
+import { useAuth } from "@/lib/auth";
+import { useState } from "react";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -51,19 +53,42 @@ function Row({
 }
 
 function ProfilePage() {
+  const { user, loading, signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await signOut();
+    setSigningOut(false);
+  };
+
+  const getUserInitial = () => {
+    if (!user) return "G";
+    const email = user.email || "";
+    return email.charAt(0).toUpperCase();
+  };
+
+  const getUserDisplayName = () => {
+    if (!user) return "Guest reporter";
+    const email = user.email || "";
+    // Get name before @ or just show email
+    const name = email.split("@")[0];
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  };
+
   return (
     <AppShell>
       <header className="px-5 pb-4 pt-8">
         <div className="flex items-center gap-4">
           <div className="grid size-16 place-items-center rounded-2xl bg-gradient-to-br from-brand to-brand/60 text-2xl font-black text-brand-foreground">
-            G
+            {getUserInitial()}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="truncate text-xl font-extrabold tracking-tight">
-              Guest reporter
+              {getUserDisplayName()}
             </h1>
             <p className="text-xs font-semibold text-muted-foreground">
-              Not signed in
+              {user ? user.email : "Not signed in"}
             </p>
           </div>
         </div>
@@ -91,23 +116,54 @@ function ProfilePage() {
       </header>
 
       <main className="space-y-6 px-5 py-4">
-        <section className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            Account
-          </p>
-          <Row 
-            icon={LogIn} 
-            label="Sign in or create account" 
-            hint="Sync favorites across devices"
-            to="/sign-in"
-          />
-          <Row 
-            icon={Bell} 
-            label="Notifications" 
-            hint="Alerts for your favorite places"
-            to="/notifications"
-          />
-        </section>
+        {user ? (
+          <section className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Account
+            </p>
+            <button
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 text-left transition-colors hover:border-danger/30 hover:bg-danger/5 disabled:opacity-50"
+            >
+              <div className="grid size-9 place-items-center rounded-xl bg-surface-muted text-danger">
+                {signingOut ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold">
+                  {signingOut ? "Signing out…" : "Sign out"}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  Return to guest mode
+                </p>
+              </div>
+            </button>
+            <Row 
+              icon={Bell} 
+              label="Notifications" 
+              hint="Alerts for your favorite places"
+              to="/notifications"
+            />
+          </section>
+        ) : (
+          <section className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Account
+            </p>
+            <Row 
+              icon={LogIn} 
+              label="Sign in or create account" 
+              hint="Sync favorites across devices"
+              to="/sign-in"
+            />
+            <Row 
+              icon={Bell} 
+              label="Notifications" 
+              hint="Alerts for your favorite places"
+              to="/notifications"
+            />
+          </section>
+        )}
 
         <section className="space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
