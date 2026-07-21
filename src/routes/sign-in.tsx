@@ -40,15 +40,21 @@ function SignInPage() {
     setSuccessMessage(null);
     setLoading(true);
 
+    console.log("[SignIn] Form submitted, isSignUp:", isSignUp);
+
     try {
       if (isSignUp) {
+        console.log("[SignIn] Attempting sign up...");
         const { error } = await signUp(email, password);
+        console.log("[SignIn] Sign up result:", error);
         if (error) throw error;
         setSuccessMessage(
           "Account created! Check your email to confirm your account."
         );
       } else {
+        console.log("[SignIn] Attempting sign in with:", email);
         const { error } = await signIn(email, password);
+        console.log("[SignIn] Sign in result, error:", error);
         if (error) throw error;
         setSuccessMessage("Successfully signed in!");
         // Small delay to show success message before navigating
@@ -57,6 +63,7 @@ function SignInPage() {
         }, 500);
       }
     } catch (err) {
+      console.log("[SignIn] Caught error:", err);
       setError((err as Error).message || "An error occurred");
     } finally {
       setLoading(false);

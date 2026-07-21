@@ -17,6 +17,7 @@ import { Route as ReputationRouteImport } from './routes/reputation'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as BusinessIdRouteImport } from './routes/business.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,11 @@ const SignInRoute = SignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BusinessIdRoute = BusinessIdRouteImport.update({
   id: '/business/$id',
   path: '/business/$id',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/sign-in'
+    | '/auth/callback'
     | '/business/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/sign-in'
+    | '/auth/callback'
     | '/business/$id'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/sign-in'
+    | '/auth/callback'
     | '/business/$id'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   SignInRoute: typeof SignInRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   BusinessIdRoute: typeof BusinessIdRoute
 }
 
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/business/$id': {
       id: '/business/$id'
       path: '/business/$id'
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   SignInRoute: SignInRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   BusinessIdRoute: BusinessIdRoute,
 }
 export const routeTree = rootRouteImport
