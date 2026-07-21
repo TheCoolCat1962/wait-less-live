@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { type Business, emojiForBusiness, photoUrlForWidth } from "@/lib/queueless-data";
+import { type Business, emojiForBusiness, photoUrlForWidth, gradientForBusiness } from "@/lib/queueless-data";
 
 type ImageBusiness = Pick<Business, "logo_url" | "primary_type" | "category">;
 
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1000;
+
 // Renders a business's primary Google Places photo, filling its parent (which
-// owns the size/aspect ratio and rounding). Falls back to a clean, on-brand
-// placeholder when there is no photo or the image fails to load — never a blank
-// area or broken-image icon. Lazy-loaded by default for smooth scrolling.
+// owns the size/aspect ratio and rounding). Falls back to a clean, category-
+// specific placeholder when there is no photo or the image fails to load — 
+// never a blank area or broken-image icon. Lazy-loaded by default for smooth scrolling.
 export function BusinessImage({
   business,
   width,
@@ -22,17 +25,57 @@ export function BusinessImage({
   eager?: boolean;
 }) {
   const src = photoUrlForWidth(business.logo_url, width);
-  const [failed, setFailed] = useState(false);
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "success" | "failed">("idle");
+  const [currentSrc, setCurrentSrc] = useState(src);
+  const retryCount = useRef(0);
 
-  // Reset the error state if the source changes (e.g. reused list row).
-  useEffect(() => setFailed(false), [src]);
+  // Get category-specific gradient for placeholder
+  const gradient = gradientForBusiness(business);
 
-  if (!src || failed) {
+  // Reset state when source changes
+  useEffect(() => {
+    if (src !== currentSrc) {
+      setCurrentSrc(src);
+      setLoadState(src ? "idle" : "failed");
+      retryCount.current = 0;
+    }
+  }, [src, currentSrc]);
+
+  const handleError = () => {
+    if (retryCount.current < MAX_RETRIES) {
+      retryCount.current++;
+      console.log(`[BusinessImage] Retrying photo load (attempt ${retryCount.current + 1}/${MAX_RETRIES + 1})`);
+      setLoadState("loading");
+      // Force reload by adding cache-busting query param
+      setTimeout(() => {
+        setCurrentSrc(`${currentSrc}${currentSrc.includes('?') ? '&' : '?'}retry=${Date.now()}`);
+      }, RETRY_DELAY_MS * retryCount.current);
+    } else {
+      console.log(`[BusinessImage] Photo failed after ${MAX_RETRIES + 1} attempts, showing placeholder`);
+      setLoadState("failed");
+    }
+  };
+
+  const handleLoad = () => {
+    if (loadState !== "success") {
+      setLoadState("success");
+    }
+  };
+
+  // Start loading when src is set
+  useEffect(() => {
+    if (src && loadState === "idle") {
+      setLoadState("loading");
+    }
+  }, [src, loadState]);
+
+  // Show emoji placeholder if no source or failed after retries
+  if (!src || loadState === "failed") {
     return (
       <div
         aria-hidden
         className={cn(
-          "grid size-full place-items-center bg-gradient-to-br from-brand/15 to-surface-muted",
+          `grid size-full place-items-center bg-gradient-to-br ${gradient.from} ${gradient.to}`,
           className,
         )}
       >
@@ -43,11 +86,13 @@ export function BusinessImage({
 
   return (
     <img
-      src={src}
+      key={currentSrc}
+      src={currentSrc}
       alt=""
       loading={eager ? "eager" : "lazy"}
       decoding="async"
-      onError={() => setFailed(true)}
+      onLoad={handleLoad}
+      onError={handleError}
       className={cn("size-full object-cover", className)}
     />
   );
