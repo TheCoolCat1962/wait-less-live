@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
+import { getAuthErrorMessage, isEmailConfirmationError } from "@/lib/auth-utils";
 import {
   LogIn,
   Mail,
@@ -10,6 +11,8 @@ import {
   EyeOff,
   ArrowLeft,
   CheckCircle,
+  AlertCircle,
+  MailCheck,
 } from "lucide-react";
 
 export const Route = createFileRoute("/sign-in")({
@@ -18,7 +21,7 @@ export const Route = createFileRoute("/sign-in")({
 
 function SignInPage() {
   const navigate = useNavigate();
-  const { user, signIn, signUp, loading: authLoading } = useAuth();
+  const { user, signIn, signUp, loading: authLoading, isAuthenticated } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,10 +32,11 @@ function SignInPage() {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (user && !authLoading) {
+    if (isAuthenticated && !authLoading) {
+      console.log("[SignIn] User already authenticated, redirecting to profile");
       navigate({ to: "/profile" });
     }
-  }, [user, authLoading, navigate]);
+  }, [isAuthenticated, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,15 +51,37 @@ function SignInPage() {
         console.log("[SignIn] Attempting sign up...");
         const { error } = await signUp(email, password);
         console.log("[SignIn] Sign up result:", error);
-        if (error) throw error;
+        
+        if (error) {
+          const userMessage = getAuthErrorMessage(error);
+          setError(userMessage);
+          return;
+        }
+        
+        // Sign up successful - show confirmation message
         setSuccessMessage(
-          "Account created! Check your email to confirm your account."
+          "Account created! Check your email and click the verification link to activate your account."
         );
+        // Clear form
+        setEmail("");
+        setPassword("");
       } else {
         console.log("[SignIn] Attempting sign in with:", email);
         const { error } = await signIn(email, password);
-        console.log("[SignIn] Sign in result, error:", error);
-        if (error) throw error;
+        console.log("[SignIn] Sign in result:", error);
+        
+        if (error) {
+          const userMessage = getAuthErrorMessage(error);
+          
+          // Special handling for email confirmation
+          if (isEmailConfirmationError(error)) {
+            setError(`${userMessage} Check your inbox for the verification email.`);
+          } else {
+            setError(userMessage);
+          }
+          return;
+        }
+        
         setSuccessMessage("Successfully signed in!");
         // Small delay to show success message before navigating
         setTimeout(() => {
@@ -63,8 +89,8 @@ function SignInPage() {
         }, 500);
       }
     } catch (err) {
-      console.log("[SignIn] Caught error:", err);
-      setError((err as Error).message || "An error occurred");
+      console.error("[SignIn] Unexpected error:", err);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -109,7 +135,8 @@ function SignInPage() {
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 p-4">
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-danger/30 bg-danger/10 p-4">
+            <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger" />
             <p className="text-sm font-medium text-danger">{error}</p>
           </div>
         )}

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Award, Bell, ChevronRight, LogIn, Settings, Star, Loader2, LogOut } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { useAuth } from "@/lib/auth";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -53,13 +53,35 @@ function Row({
 }
 
 function ProfilePage() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, refreshSession } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Wait for auth to be initialized before showing content
+  useEffect(() => {
+    if (!loading) {
+      setIsInitialized(true);
+      console.log("[Profile] Auth initialized:", {
+        hasUser: !!user,
+        userEmail: user?.email,
+        emailConfirmed: !!user?.email_confirmed_at,
+      });
+    }
+  }, [loading, user]);
+
+  // Refresh session on mount to ensure we have latest auth state
+  useEffect(() => {
+    refreshSession();
+  }, [refreshSession]);
 
   const handleSignOut = async () => {
     setSigningOut(true);
-    await signOut();
-    setSigningOut(false);
+    try {
+      await signOut();
+      console.log("[Profile] Sign out completed");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const getUserInitial = () => {
@@ -75,6 +97,20 @@ function ProfilePage() {
     const name = email.split("@")[0];
     return name.charAt(0).toUpperCase() + name.slice(1);
   };
+
+  // Show loading state while auth is initializing
+  if (!isInitialized) {
+    return (
+      <AppShell>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="mx-auto size-8 animate-spin text-brand" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
