@@ -9,123 +9,54 @@ import {
   Shield,
   LogOut,
   Loader2,
-  Trash2,
   Download,
   HelpCircle,
   Info,
   ChevronDown,
+  CheckCircle,
 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { useAuth } from "@/lib/auth";
+import { useSettings } from "@/lib/settings";
+import { useTheme } from "@/lib/theme";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
-type SettingSection = {
-  title: string;
-  items: SettingItem[];
-};
-
-type SettingItem = {
-  id: string;
-  label: string;
-  description?: string;
-  icon: typeof Bell;
-  type: "toggle" | "navigation" | "action" | "danger";
-  value?: boolean;
-  href?: string;
-};
-
-const sections: SettingSection[] = [
-  {
-    title: "Appearance",
-    items: [
-      {
-        id: "dark_mode",
-        label: "Dark mode",
-        description: "Use dark theme throughout the app",
-        icon: Moon,
-        type: "toggle",
-        value: false,
-      },
-    ],
-  },
-  {
-    title: "Notifications",
-    items: [
-      {
-        id: "push_notifications",
-        label: "Push notifications",
-        description: "Receive alerts about wait times and updates",
-        icon: Bell,
-        type: "toggle",
-        value: true,
-      },
-      {
-        id: "email_notifications",
-        label: "Email digest",
-        description: "Weekly summary of your favorite places",
-        icon: Bell,
-        type: "toggle",
-        value: false,
-      },
-    ],
-  },
-  {
-    title: "Location",
-    items: [
-      {
-        id: "location_accuracy",
-        label: "High accuracy mode",
-        description: "Use GPS for more precise nearby results",
-        icon: MapPin,
-        type: "toggle",
-        value: true,
-      },
-    ],
-  },
-  {
-    title: "Privacy & Security",
-    items: [
-      {
-        id: "manage_account",
-        label: "Manage account",
-        description: "Update email, password, and security settings",
-        icon: Shield,
-        type: "navigation",
-        href: "/settings/account",
-      },
-      {
-        id: "privacy",
-        label: "Privacy settings",
-        description: "Control your data and visibility",
-        icon: Shield,
-        type: "navigation",
-        href: "/settings/privacy",
-      },
-    ],
-  },
-];
+function Toggle({ 
+  enabled, 
+  onClick,
+  disabled = false,
+}: { 
+  enabled: boolean; 
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+        enabled ? "bg-brand" : "bg-surface-muted"
+      }`}
+    >
+      <span
+        className={`absolute top-1 size-4 rounded-full bg-white shadow transition-transform ${
+          enabled ? "right-1" : "left-1"
+        }`}
+      />
+    </button>
+  );
+}
 
 function SettingsPage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { settings, toggleSetting, syncing } = useSettings();
+  const { isDark, toggle: toggleDark } = useTheme();
   const [loading, setLoading] = useState(false);
-  const [settings, setSettings] = useState<Record<string, boolean>>({
-    dark_mode: false,
-    push_notifications: true,
-    email_notifications: false,
-    location_accuracy: true,
-  });
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
-
-  const toggleSetting = (id: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-  };
 
   const handleSignOut = async () => {
     if (!confirm("Are you sure you want to sign out?")) return;
@@ -139,10 +70,8 @@ function SettingsPage() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    alert(
-      "To delete your account, please contact support@queueless.app with your request. Account deletion is processed within 30 days."
-    );
+  const handleToggleDark = () => {
+    toggleDark();
   };
 
   return (
@@ -159,64 +88,140 @@ function SettingsPage() {
             </p>
             <h1 className="text-xl font-extrabold tracking-tight">Settings</h1>
           </div>
+          {syncing && (
+            <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Saving
+            </div>
+          )}
         </div>
       </header>
 
       {/* Content */}
       <main className="px-5 py-4">
         <div className="space-y-6">
-          {sections.map((section) => (
-            <div key={section.title}>
-              <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                {section.title}
-              </p>
-              <div className="space-y-1 rounded-2xl border border-border bg-surface">
-                {section.items.map((item, index) => {
-                  const Icon = item.icon;
-                  const isLast = index === section.items.length - 1;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex items-center gap-3 px-4 py-3.5 ${
-                        !isLast ? "border-b border-border" : ""
-                      }`}
-                    >
-                      <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
-                        <Icon className="size-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold">{item.label}</p>
-                        {item.description && (
-                          <p className="text-xs text-muted-foreground">
-                            {item.description}
-                          </p>
-                        )}
-                      </div>
-                      {item.type === "toggle" && (
-                        <button
-                          onClick={() => toggleSetting(item.id)}
-                          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                            settings[item.id]
-                              ? "bg-brand"
-                              : "bg-surface-muted"
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-1 size-4 rounded-full bg-white shadow transition-transform ${
-                              settings[item.id] ? "right-1" : "left-1"
-                            }`}
-                          />
-                        </button>
-                      )}
-                      {item.type === "navigation" && (
-                        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                      )}
-                    </div>
-                  );
-                })}
+          {/* Appearance */}
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Appearance
+            </p>
+            <div className="space-y-1 rounded-2xl border border-border bg-surface">
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
+                  <Moon className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">Dark mode</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use dark theme throughout the app
+                  </p>
+                </div>
+                <Toggle enabled={isDark} onClick={handleToggleDark} />
               </div>
             </div>
-          ))}
+          </div>
+
+          {/* Notifications */}
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Notifications
+            </p>
+            <div className="space-y-1 rounded-2xl border border-border bg-surface">
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
+                  <Bell className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">Push notifications</p>
+                  <p className="text-xs text-muted-foreground">
+                    Receive alerts about wait times and updates
+                  </p>
+                </div>
+                <Toggle 
+                  enabled={settings.push_notifications} 
+                  onClick={() => toggleSetting("push_notifications")} 
+                />
+              </div>
+              <div className="flex items-center gap-3 border-t border-border px-4 py-3.5">
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
+                  <Bell className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">Email digest</p>
+                  <p className="text-xs text-muted-foreground">
+                    Weekly summary of your favorite places
+                  </p>
+                </div>
+                <Toggle 
+                  enabled={settings.email_notifications} 
+                  onClick={() => toggleSetting("email_notifications")} 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Location
+            </p>
+            <div className="space-y-1 rounded-2xl border border-border bg-surface">
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
+                  <MapPin className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">High accuracy mode</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use GPS for more precise nearby results
+                  </p>
+                </div>
+                <Toggle 
+                  enabled={settings.location_accuracy} 
+                  onClick={() => toggleSetting("location_accuracy")} 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Privacy & Security */}
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Account
+            </p>
+            <div className="space-y-1 rounded-2xl border border-border bg-surface">
+              <Link
+                to="/settings/account"
+                className="flex items-center gap-3 px-4 py-3.5"
+              >
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
+                  <Shield className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">Manage account</p>
+                  <p className="text-xs text-muted-foreground">
+                    Update email, password, and security
+                  </p>
+                </div>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </Link>
+              <Link
+                to="/settings/privacy"
+                className="flex items-center gap-3 border-t border-border px-4 py-3.5"
+              >
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
+                  <Shield className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">Privacy settings</p>
+                  <p className="text-xs text-muted-foreground">
+                    Control your data and visibility
+                  </p>
+                </div>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </Link>
+            </div>
+          </div>
 
           {/* Expandable Sections */}
           <div>
@@ -265,7 +270,7 @@ function SettingsPage() {
             </p>
             <div className="space-y-1 rounded-2xl border border-border bg-surface">
               <button
-                onClick={() => alert("Export feature coming soon!")}
+                onClick={() => alert("Data export feature coming soon! Your data will be exported as a JSON file.")}
                 className="flex w-full items-center gap-3 px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
@@ -277,14 +282,14 @@ function SettingsPage() {
                     Download your reports and activity
                   </p>
                 </div>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Soon</span>
               </button>
-              <button
-                onClick={handleDeleteAccount}
-                className="flex w-full items-center gap-3 px-4 py-3.5"
+              <Link
+                to="/settings/account"
+                className="flex items-center gap-3 border-t border-border px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-danger/10 text-danger">
-                  <Trash2 className="size-4" />
+                  <Shield className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1 text-left">
                   <p className="text-sm font-semibold text-danger">
@@ -295,7 +300,7 @@ function SettingsPage() {
                   </p>
                 </div>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-              </button>
+              </Link>
             </div>
           </div>
 
@@ -306,20 +311,20 @@ function SettingsPage() {
             </p>
             <div className="space-y-1 rounded-2xl border border-border bg-surface">
               <button
-                onClick={() => alert("Help center coming soon!")}
+                onClick={() => window.open("mailto:support@queueless.app?subject=QueueLess Support Request", "_blank")}
                 className="flex w-full items-center gap-3 px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
                   <HelpCircle className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="text-sm font-semibold">Help center</p>
+                  <p className="text-sm font-semibold">Contact support</p>
                 </div>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </button>
               <button
-                onClick={() => alert("About QueueLess v1.0.0")}
-                className="flex w-full items-center gap-3 px-4 py-3.5"
+                onClick={() => alert("QueueLess v1.0.0\n\nA community-powered wait time app for the New Orleans metro area.\n\n© 2024 QueueLess")}
+                className="flex w-full items-center gap-3 border-t border-border px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
                   <Info className="size-4" />
@@ -328,7 +333,6 @@ function SettingsPage() {
                   <p className="text-sm font-semibold">About QueueLess</p>
                   <p className="text-xs text-muted-foreground">Version 1.0.0</p>
                 </div>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </button>
             </div>
           </div>
