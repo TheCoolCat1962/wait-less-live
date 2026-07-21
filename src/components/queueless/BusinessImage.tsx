@@ -47,8 +47,9 @@ export function BusinessImage({
       console.log(`[BusinessImage] Retrying photo load (attempt ${retryCount.current + 1}/${MAX_RETRIES + 1})`);
       setLoadState("loading");
       // Force reload by adding cache-busting query param
+      const newSrc = `${currentSrc}${currentSrc.includes('?') ? '&' : '?'}retry=${Date.now()}`;
       setTimeout(() => {
-        setCurrentSrc(`${currentSrc}${currentSrc.includes('?') ? '&' : '?'}retry=${Date.now()}`);
+        setCurrentSrc(newSrc);
       }, RETRY_DELAY_MS * retryCount.current);
     } else {
       console.log(`[BusinessImage] Photo failed after ${MAX_RETRIES + 1} attempts, showing placeholder`);
@@ -86,8 +87,8 @@ export function BusinessImage({
 
   return (
     <img
-      key={currentSrc}
-      src={currentSrc}
+      key={currentSrc ?? "img"}
+      src={currentSrc ?? ""}
       alt=""
       loading={eager ? "eager" : "lazy"}
       decoding="async"

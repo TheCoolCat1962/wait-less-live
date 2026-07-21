@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ReportSheetProvider } from "../components/queueless/ReportSheetContext";
 import { LocationProvider } from "../lib/location";
 import { AuthProvider } from "../lib/auth";
+import { ThemeProvider } from "../lib/theme";
 
 function NotFoundComponent() {
   return (
@@ -132,12 +133,14 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <LocationProvider>
-          <ReportSheetProvider>
-            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-            <Outlet />
-          </ReportSheetProvider>
-        </LocationProvider>
+        <ThemeProvider>
+          <LocationProvider>
+            <ReportSheetProvider>
+              {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+              <Outlet />
+            </ReportSheetProvider>
+          </LocationProvider>
+        </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
