@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { geocodeQuery } from "./queueless.functions";
 import type { Coords } from "./queueless-data";
 import { useSettings } from "./settings";
@@ -18,12 +11,7 @@ export interface UserLocation {
   source: LocationSource;
 }
 
-export type LocationStatus =
-  | "loading"
-  | "idle"
-  | "prompting"
-  | "ready"
-  | "error";
+export type LocationStatus = "loading" | "idle" | "prompting" | "ready" | "error";
 
 interface LocationContextValue {
   status: LocationStatus;
@@ -77,10 +65,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
     setStatus("prompting");
     setError(null);
-    
+
     const highAccuracy = settings.location_accuracy;
     console.log("[Location] Requesting geolocation, high accuracy:", highAccuracy);
-    
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc: UserLocation = {
@@ -100,10 +88,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         );
         setStatus("idle");
       },
-      { 
-        enableHighAccuracy: highAccuracy, 
-        timeout: 10000, 
-        maximumAge: highAccuracy ? 120000 : 300000 
+      {
+        enableHighAccuracy: highAccuracy,
+        timeout: 10000,
+        maximumAge: highAccuracy ? 120000 : 300000,
       },
     );
   }, [settings.location_accuracy]);

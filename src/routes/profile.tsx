@@ -26,9 +26,7 @@ function Row({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold">{label}</p>
-        {hint && (
-          <p className="truncate text-xs text-muted-foreground">{hint}</p>
-        )}
+        {hint && <p className="truncate text-xs text-muted-foreground">{hint}</p>}
       </div>
       <ChevronRight className="size-4 text-muted-foreground" />
     </>
@@ -163,20 +161,22 @@ function ProfilePage() {
               className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 text-left transition-colors hover:border-danger/30 hover:bg-danger/5 disabled:opacity-50"
             >
               <div className="grid size-9 place-items-center rounded-xl bg-surface-muted text-danger">
-                {signingOut ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
+                {signingOut ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <LogOut className="size-4" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold">
                   {signingOut ? "Signing out…" : "Sign out"}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  Return to guest mode
-                </p>
+                <p className="truncate text-xs text-muted-foreground">Return to guest mode</p>
               </div>
             </button>
-            <Row 
-              icon={Bell} 
-              label="Notifications" 
+            <Row
+              icon={Bell}
+              label="Notifications"
               hint="Alerts for your favorite places"
               to="/notifications"
             />
@@ -186,15 +186,15 @@ function ProfilePage() {
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Account
             </p>
-            <Row 
-              icon={LogIn} 
-              label="Sign in or create account" 
+            <Row
+              icon={LogIn}
+              label="Sign in or create account"
               hint="Sync favorites across devices"
               to="/sign-in"
             />
-            <Row 
-              icon={Bell} 
-              label="Notifications" 
+            <Row
+              icon={Bell}
+              label="Notifications"
               hint="Alerts for your favorite places"
               to="/notifications"
             />
@@ -205,29 +205,18 @@ function ProfilePage() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             Community
           </p>
-          <Row 
-            icon={Star} 
-            label="Your favorites" 
-            hint="Manage saved places"
-            to="/favorites"
-          />
-          <Row 
-            icon={Award} 
-            label="Reputation & badges" 
+          <Row icon={Star} label="Your favorites" hint="Manage saved places" to="/favorites" />
+          <Row
+            icon={Award}
+            label="Reputation & badges"
             hint="Earn trust from accurate reports"
             to="/reputation"
           />
-          <Row 
-            icon={Settings} 
-            label="Settings"
-            to="/settings"
-          />
+          <Row icon={Settings} label="Settings" to="/settings" />
         </section>
 
         <div className="rounded-2xl border border-brand/20 bg-brand/5 p-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-brand">
-            Go premium
-          </p>
+          <p className="text-xs font-bold uppercase tracking-widest text-brand">Go premium</p>
           <p className="mt-1 text-sm font-semibold">
             Wait-time alerts, trends & ad-free — $4.99/mo
           </p>

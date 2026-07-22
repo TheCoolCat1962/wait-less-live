@@ -76,9 +76,9 @@
   --accent-foreground: oklch(0.25 0.03 260);
 
   /* Wait-time semantics */
-  --safe: oklch(0.68 0.16 155);       /* green  */
-  --caution: oklch(0.78 0.16 75);     /* amber  */
-  --danger: oklch(0.63 0.22 25);      /* red    */
+  --safe: oklch(0.68 0.16 155); /* green  */
+  --caution: oklch(0.78 0.16 75); /* amber  */
+  --danger: oklch(0.63 0.22 25); /* red    */
 
   --destructive: oklch(0.63 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
@@ -116,7 +116,8 @@
   * {
     border-color: var(--color-border);
   }
-  html, body {
+  html,
+  body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);

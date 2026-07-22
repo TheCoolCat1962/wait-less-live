@@ -23,15 +23,12 @@ export function LocationPrompt() {
         <p className="mt-4 inline-block rounded-full bg-brand/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-brand">
           Now launching · New Orleans
         </p>
-        <h2 className="mt-2 text-xl font-extrabold tracking-tight">
-          Find wait times near you
-        </h2>
+        <h2 className="mt-2 text-xl font-extrabold tracking-tight">Find wait times near you</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          QueueLess is live across the New Orleans metro — Metairie, Kenner,
-          Gretna, Chalmette and more. Share your location or enter a ZIP code,
-          neighborhood, or address. More cities coming soon.
+          QueueLess is live across the New Orleans metro — Metairie, Kenner, Gretna, Chalmette and
+          more. Share your location or enter a ZIP code, neighborhood, or address. More cities
+          coming soon.
         </p>
-
 
         <button
           type="button"
@@ -87,8 +84,7 @@ export function LocationPrompt() {
         )}
 
         <p className="mt-5 text-center text-[11px] text-muted-foreground">
-          Your location is never shared. It is only used to find businesses near
-          you.
+          Your location is never shared. It is only used to find businesses near you.
         </p>
       </div>
     </div>

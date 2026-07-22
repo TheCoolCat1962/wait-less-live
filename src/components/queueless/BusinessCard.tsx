@@ -1,10 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Star, Plus } from "lucide-react";
-import {
-  type BusinessWithWait,
-  formatUpdated,
-  trendLabel,
-} from "@/lib/queueless-data";
+import { type BusinessWithWait, formatUpdated, trendLabel } from "@/lib/queueless-data";
 import { BusinessImage } from "./BusinessImage";
 import { WaitBadge } from "./WaitBadge";
 import { useFavorites } from "@/lib/favorites";

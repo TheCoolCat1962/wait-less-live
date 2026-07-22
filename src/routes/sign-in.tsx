@@ -51,16 +51,16 @@ function SignInPage() {
         console.log("[SignIn] Attempting sign up...");
         const { error } = await signUp(email, password);
         console.log("[SignIn] Sign up result:", error);
-        
+
         if (error) {
           const userMessage = getAuthErrorMessage(error);
           setError(userMessage);
           return;
         }
-        
+
         // Sign up successful - show confirmation message
         setSuccessMessage(
-          "Account created! Check your email and click the verification link to activate your account."
+          "Account created! Check your email and click the verification link to activate your account.",
         );
         // Clear form
         setEmail("");
@@ -69,10 +69,10 @@ function SignInPage() {
         console.log("[SignIn] Attempting sign in with:", email);
         const { error } = await signIn(email, password);
         console.log("[SignIn] Sign in result:", error);
-        
+
         if (error) {
           const userMessage = getAuthErrorMessage(error);
-          
+
           // Special handling for email confirmation
           if (isEmailConfirmationError(error)) {
             setError(`${userMessage} Check your inbox for the verification email.`);
@@ -81,7 +81,7 @@ function SignInPage() {
           }
           return;
         }
-        
+
         setSuccessMessage("Successfully signed in!");
         // Small delay to show success message before navigating
         setTimeout(() => {
@@ -144,10 +144,7 @@ function SignInPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label
-              htmlFor="email"
-              className="text-sm font-semibold text-foreground"
-            >
+            <label htmlFor="email" className="text-sm font-semibold text-foreground">
               Email
             </label>
             <div className="relative">
@@ -166,10 +163,7 @@ function SignInPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label
-              htmlFor="password"
-              className="text-sm font-semibold text-foreground"
-            >
+            <label htmlFor="password" className="text-sm font-semibold text-foreground">
               Password
             </label>
             <div className="relative">
@@ -191,11 +185,7 @@ function SignInPage() {
                 disabled={loading}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               >
-                {showPassword ? (
-                  <EyeOff className="size-4" />
-                ) : (
-                  <Eye className="size-4" />
-                )}
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
           </div>
