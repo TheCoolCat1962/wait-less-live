@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { 
-  ArrowLeft, 
-  Mail, 
-  Lock, 
-  User, 
-  Loader2, 
-  CheckCircle, 
+import {
+  ArrowLeft,
+  Mail,
+  Lock,
+  User,
+  Loader2,
+  CheckCircle,
   AlertCircle,
   Eye,
   EyeOff,
@@ -30,21 +30,23 @@ function getSupabaseAuth() {
 
 function AccountPage() {
   const { user, refreshSession } = useAuth();
-  const [activeSection, setActiveSection] = useState<"display" | "email" | "password" | "delete" | null>(null);
-  
+  const [activeSection, setActiveSection] = useState<
+    "display" | "email" | "password" | "delete" | null
+  >(null);
+
   // Display name state
   const [displayName, setDisplayName] = useState("");
   const [displayNameLoading, setDisplayNameLoading] = useState(false);
   const [displayNameSuccess, setDisplayNameSuccess] = useState<string | null>(null);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
-  
+
   // Email state
   const [newEmail, setNewEmail] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [resendLoading, setResendLoading] = useState(false);
-  
+
   // Password state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -53,7 +55,7 @@ function AccountPage() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  
+
   // Delete account state
   const [deleteStep, setDeleteStep] = useState<"initial" | "confirm">("initial");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -76,19 +78,19 @@ function AccountPage() {
       setDisplayNameError("Display name cannot be empty");
       return;
     }
-    
+
     setDisplayNameLoading(true);
     setDisplayNameSuccess(null);
     setDisplayNameError(null);
-    
+
     try {
       const supabase = getSupabaseAuth();
       const { error } = await supabase.auth.updateUser({
-        data: { display_name: displayName.trim() }
+        data: { display_name: displayName.trim() },
       });
-      
+
       if (error) throw error;
-      
+
       setDisplayNameSuccess("Display name updated successfully!");
       await refreshSession();
     } catch (err: any) {
@@ -103,13 +105,15 @@ function AccountPage() {
     setEmailLoading(true);
     setEmailSuccess(null);
     setEmailError(null);
-    
+
     try {
       const supabase = getSupabaseAuth();
       const { error } = await supabase.auth.updateUser({ email: newEmail });
       if (error) throw error;
-      
-      setEmailSuccess(`Verification email sent to ${newEmail}. Please check your inbox to confirm.`);
+
+      setEmailSuccess(
+        `Verification email sent to ${newEmail}. Please check your inbox to confirm.`,
+      );
       setNewEmail("");
       await refreshSession();
     } catch (err: any) {
@@ -121,7 +125,7 @@ function AccountPage() {
 
   const handleResendVerification = async () => {
     if (!user?.email) return;
-    
+
     setResendLoading(true);
     try {
       const supabase = getSupabaseAuth();
@@ -129,9 +133,9 @@ function AccountPage() {
         type: "signup",
         email: user.email,
       });
-      
+
       if (error) throw error;
-      
+
       setEmailSuccess("Verification email resent! Please check your inbox.");
     } catch (err: any) {
       setEmailError(err.message || "Failed to resend verification email");
@@ -145,40 +149,40 @@ function AccountPage() {
     setPasswordLoading(true);
     setPasswordSuccess(null);
     setPasswordError(null);
-    
+
     // Validate passwords match
     if (newPassword !== confirmPassword) {
       setPasswordError("Passwords do not match");
       setPasswordLoading(false);
       return;
     }
-    
+
     // Validate password length
     if (newPassword.length < 6) {
       setPasswordError("Password must be at least 6 characters");
       setPasswordLoading(false);
       return;
     }
-    
+
     try {
       const supabase = getSupabaseAuth();
-      
+
       // Re-authenticate first (best practice for password changes)
       const { error: reauthError } = await supabase.auth.signInWithPassword({
         email: user?.email || "",
         password: currentPassword,
       });
-      
+
       if (reauthError) {
         setPasswordError("Current password is incorrect");
         setPasswordLoading(false);
         return;
       }
-      
+
       // Update password
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      
+
       setPasswordSuccess("Password updated successfully!");
       setCurrentPassword("");
       setNewPassword("");
@@ -206,25 +210,25 @@ function AccountPage() {
       setDeleteError("Please type DELETE to confirm");
       return;
     }
-    
+
     setDeleteLoading(true);
     setDeleteError(null);
-    
+
     try {
       const supabase = getSupabaseAuth();
-      
+
       // Sign out and show message that deletion needs manual support
       // Note: Supabase Auth doesn't support programmatic account deletion from the client
       // Users need to contact support or use the admin dashboard
       await supabase.auth.signOut();
-      
+
       alert(
         "Account Deletion Request Submitted\n\n" +
-        "Your account deletion request has been noted. " +
-        "Please contact support@queueless.app to complete the account deletion process.\n\n" +
-        "You will be signed out now."
+          "Your account deletion request has been noted. " +
+          "Please contact support@queueless.app to complete the account deletion process.\n\n" +
+          "You will be signed out now.",
       );
-      
+
       // Navigate to home after signing out
       window.location.href = "/";
     } catch (err: any) {
@@ -237,8 +241,8 @@ function AccountPage() {
     <>
       {/* Header */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-surface/90 px-4 py-3 backdrop-blur">
-        <Link 
-          to="/settings" 
+        <Link
+          to="/settings"
           className="grid size-9 place-items-center rounded-full bg-surface-muted"
         >
           <ArrowLeft className="size-4" />
@@ -264,7 +268,9 @@ function AccountPage() {
                 <p className="text-sm font-semibold truncate">
                   {user?.user_metadata?.display_name || user?.email || "Account"}
                 </p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email || "Not signed in"}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user?.email || "Not signed in"}
+                </p>
               </div>
               {isEmailVerified ? (
                 <div className="flex items-center gap-1 rounded-full bg-safe/10 px-2 py-1 text-[10px] font-medium text-safe">
@@ -297,7 +303,7 @@ function AccountPage() {
                 {user?.user_metadata?.display_name ? "Edit" : "Add"}
               </span>
             </button>
-            
+
             {activeSection === "display" && (
               <div className="border-t border-border p-4">
                 <form onSubmit={handleUpdateDisplayName} className="space-y-3">
@@ -312,21 +318,21 @@ function AccountPage() {
                       className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
                     />
                   </div>
-                  
+
                   {displayNameSuccess && (
                     <div className="flex items-center gap-2 rounded-xl border border-safe/30 bg-safe/10 p-3 text-xs font-medium text-safe">
                       <CheckCircle className="size-4" />
                       {displayNameSuccess}
                     </div>
                   )}
-                  
+
                   {displayNameError && (
                     <div className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-xs font-medium text-danger">
                       <AlertCircle className="size-4" />
                       {displayNameError}
                     </div>
                   )}
-                  
+
                   <button
                     type="submit"
                     disabled={displayNameLoading || !displayName.trim()}
@@ -356,11 +362,13 @@ function AccountPage() {
                   {!isEmailVerified && " - Verification pending"}
                 </p>
               </div>
-              <span className={`text-xs font-medium ${isEmailVerified ? "text-safe" : "text-caution"}`}>
+              <span
+                className={`text-xs font-medium ${isEmailVerified ? "text-safe" : "text-caution"}`}
+              >
                 {isEmailVerified ? "Verified" : "Unverified"}
               </span>
             </button>
-            
+
             {activeSection === "email" && (
               <div className="border-t border-border p-4">
                 {/* Email verification status */}
@@ -385,7 +393,7 @@ function AccountPage() {
                     </div>
                   </div>
                 )}
-                
+
                 <form onSubmit={handleUpdateEmail} className="space-y-3">
                   <div>
                     <label className="mb-1 block text-xs font-semibold">New Email Address</label>
@@ -399,21 +407,21 @@ function AccountPage() {
                       className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
                     />
                   </div>
-                  
+
                   {emailSuccess && (
                     <div className="flex items-center gap-2 rounded-xl border border-safe/30 bg-safe/10 p-3 text-xs font-medium text-safe">
                       <CheckCircle className="size-4" />
                       {emailSuccess}
                     </div>
                   )}
-                  
+
                   {emailError && (
                     <div className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-xs font-medium text-danger">
                       <AlertCircle className="size-4" />
                       {emailError}
                     </div>
                   )}
-                  
+
                   <button
                     type="submit"
                     disabled={emailLoading || !newEmail}
@@ -442,7 +450,7 @@ function AccountPage() {
               </div>
               <span className="text-xs font-medium text-muted-foreground">Change</span>
             </button>
-            
+
             {activeSection === "password" && (
               <div className="border-t border-border p-4">
                 <form onSubmit={handleUpdatePassword} className="space-y-3">
@@ -458,7 +466,7 @@ function AccountPage() {
                       className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="mb-1 block text-xs font-semibold">New Password</label>
                     <div className="relative">
@@ -480,7 +488,7 @@ function AccountPage() {
                       </button>
                     </div>
                   </div>
-                  
+
                   <div>
                     <label className="mb-1 block text-xs font-semibold">Confirm New Password</label>
                     <input
@@ -493,24 +501,26 @@ function AccountPage() {
                       className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
                     />
                   </div>
-                  
+
                   {passwordSuccess && (
                     <div className="flex items-center gap-2 rounded-xl border border-safe/30 bg-safe/10 p-3 text-xs font-medium text-safe">
                       <CheckCircle className="size-4" />
                       {passwordSuccess}
                     </div>
                   )}
-                  
+
                   {passwordError && (
                     <div className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-xs font-medium text-danger">
                       <AlertCircle className="size-4" />
                       {passwordError}
                     </div>
                   )}
-                  
+
                   <button
                     type="submit"
-                    disabled={passwordLoading || !currentPassword || !newPassword || !confirmPassword}
+                    disabled={
+                      passwordLoading || !currentPassword || !newPassword || !confirmPassword
+                    }
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-bold text-brand-foreground disabled:opacity-50"
                   >
                     {passwordLoading ? <Loader2 className="size-4 animate-spin" /> : null}
@@ -535,10 +545,12 @@ function AccountPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-danger">Delete Account</p>
-                <p className="text-xs text-muted-foreground">Permanently remove your account and data</p>
+                <p className="text-xs text-muted-foreground">
+                  Permanently remove your account and data
+                </p>
               </div>
             </button>
-            
+
             {activeSection === "delete" && (
               <div className="border-t border-danger/20 p-4">
                 {deleteStep === "initial" ? (
@@ -550,7 +562,8 @@ function AccountPage() {
                         <div className="space-y-2 text-sm">
                           <p className="font-semibold text-foreground">This action is permanent</p>
                           <p className="text-xs text-muted-foreground">
-                            The following will be <span className="font-semibold text-danger">permanently deleted</span>:
+                            The following will be{" "}
+                            <span className="font-semibold text-danger">permanently deleted</span>:
                           </p>
                           <ul className="ml-4 list-disc text-xs text-muted-foreground">
                             <li>Your account and login credentials</li>
@@ -565,7 +578,7 @@ function AccountPage() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="mt-4 flex gap-2">
                       <button
                         onClick={handleCancelDelete}
@@ -590,12 +603,14 @@ function AccountPage() {
                         <div className="space-y-2">
                           <p className="font-bold text-danger">Final Confirmation</p>
                           <p className="text-xs text-muted-foreground">
-                            Are you absolutely sure? Type <span className="font-bold text-danger">DELETE</span> to confirm you want to permanently delete your account.
+                            Are you absolutely sure? Type{" "}
+                            <span className="font-bold text-danger">DELETE</span> to confirm you
+                            want to permanently delete your account.
                           </p>
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="mt-4">
                       <label className="mb-1 block text-xs font-semibold">
                         Type <span className="text-danger">DELETE</span> to confirm
@@ -612,14 +627,14 @@ function AccountPage() {
                         className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-mono placeholder:text-muted-foreground focus:border-danger focus:outline-none focus:ring-2 focus:ring-danger/20 disabled:opacity-50"
                       />
                     </div>
-                    
+
                     {deleteError && (
                       <div className="mt-2 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-xs font-medium text-danger">
                         <AlertCircle className="size-4" />
                         {deleteError}
                       </div>
                     )}
-                    
+
                     <div className="mt-4 flex gap-2">
                       <button
                         onClick={handleCancelDelete}

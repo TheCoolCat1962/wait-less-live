@@ -36,9 +36,7 @@ export function useFavorites() {
 
   const toggle = useCallback((id: string) => {
     const current = read();
-    const next = current.includes(id)
-      ? current.filter((x) => x !== id)
-      : [...current, id];
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
     write(next);
   }, []);
 

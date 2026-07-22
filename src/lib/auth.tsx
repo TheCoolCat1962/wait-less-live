@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import type { User, Session, AuthError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -32,35 +25,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("[Auth] Initializing auth provider...");
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log("[Auth] Initial session check:", {
-        hasSession: !!session,
-        hasUser: !!session?.user,
-        userEmail: session?.user?.email,
-        emailConfirmed: !!session?.user?.email_confirmed_at,
-      });
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    }).catch((error) => {
-      console.error("[Auth] Error getting session:", error);
-      setLoading(false);
-    });
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        console.log("[Auth] Auth state changed:", {
-          event,
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        console.log("[Auth] Initial session check:", {
           hasSession: !!session,
+          hasUser: !!session?.user,
           userEmail: session?.user?.email,
           emailConfirmed: !!session?.user?.email_confirmed_at,
         });
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
-      }
-    );
+      })
+      .catch((error) => {
+        console.error("[Auth] Error getting session:", error);
+        setLoading(false);
+      });
+
+    // Listen for auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[Auth] Auth state changed:", {
+        event,
+        hasSession: !!session,
+        userEmail: session?.user?.email,
+        emailConfirmed: !!session?.user?.email_confirmed_at,
+      });
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
     return () => {
       console.log("[Auth] Cleaning up auth subscription");
@@ -90,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         password,
       });
-      
+
       if (error) {
         console.log("[Auth] Sign in failed:", {
           error: error.message,
@@ -98,13 +94,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         return { error };
       }
-      
+
       console.log("[Auth] Sign in successful:", {
         userEmail: data.user?.email,
         emailConfirmed: !!data.user?.email_confirmed_at,
         hasSession: !!data.session,
       });
-      
+
       return { error: null };
     } catch (err) {
       console.error("[Auth] Sign in exception:", err);
@@ -119,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         password,
       });
-      
+
       if (error) {
         console.log("[Auth] Sign up failed:", {
           error: error.message,
@@ -127,13 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         return { error };
       }
-      
+
       console.log("[Auth] Sign up successful:", {
         userEmail: data.user?.email,
         emailConfirmed: !!data.user?.email_confirmed_at,
         needsConfirmation: !data.session, // No session means email confirmation is needed
       });
-      
+
       return { error: null };
     } catch (err) {
       console.error("[Auth] Sign up exception:", err);
@@ -154,7 +150,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = !!user && !!session;
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, isAuthenticated, signIn, signUp, signOut, refreshSession }}>
+    <AuthContext.Provider
+      value={{ user, session, loading, isAuthenticated, signIn, signUp, signOut, refreshSession }}
+    >
       {children}
     </AuthContext.Provider>
   );

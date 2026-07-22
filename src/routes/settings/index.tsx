@@ -23,12 +23,12 @@ export const Route = createFileRoute("/settings/")({
   component: SettingsPage,
 });
 
-function Toggle({ 
-  enabled, 
+function Toggle({
+  enabled,
   onClick,
   disabled = false,
-}: { 
-  enabled: boolean; 
+}: {
+  enabled: boolean;
   onClick: () => void;
   disabled?: boolean;
 }) {
@@ -111,9 +111,7 @@ function SettingsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">Dark mode</p>
-                  <p className="text-xs text-muted-foreground">
-                    Use dark theme throughout the app
-                  </p>
+                  <p className="text-xs text-muted-foreground">Use dark theme throughout the app</p>
                 </div>
                 <Toggle enabled={isDark} onClick={handleToggleDark} />
               </div>
@@ -136,9 +134,9 @@ function SettingsPage() {
                     Receive alerts about wait times and updates
                   </p>
                 </div>
-                <Toggle 
-                  enabled={settings.push_notifications} 
-                  onClick={() => toggleSetting("push_notifications")} 
+                <Toggle
+                  enabled={settings.push_notifications}
+                  onClick={() => toggleSetting("push_notifications")}
                 />
               </div>
               <div className="flex items-center gap-3 border-t border-border px-4 py-3.5">
@@ -151,9 +149,9 @@ function SettingsPage() {
                     Weekly summary of your favorite places
                   </p>
                 </div>
-                <Toggle 
-                  enabled={settings.email_notifications} 
-                  onClick={() => toggleSetting("email_notifications")} 
+                <Toggle
+                  enabled={settings.email_notifications}
+                  onClick={() => toggleSetting("email_notifications")}
                 />
               </div>
             </div>
@@ -175,9 +173,9 @@ function SettingsPage() {
                     Use GPS for more precise nearby results
                   </p>
                 </div>
-                <Toggle 
-                  enabled={settings.location_accuracy} 
-                  onClick={() => toggleSetting("location_accuracy")} 
+                <Toggle
+                  enabled={settings.location_accuracy}
+                  onClick={() => toggleSetting("location_accuracy")}
                 />
               </div>
             </div>
@@ -189,10 +187,7 @@ function SettingsPage() {
               Account
             </p>
             <div className="space-y-1 rounded-2xl border border-border bg-surface">
-              <Link
-                to="/settings/account"
-                className="flex items-center gap-3 px-4 py-3.5"
-              >
+              <Link to="/settings/account" className="flex items-center gap-3 px-4 py-3.5">
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
                   <Shield className="size-4" />
                 </div>
@@ -213,9 +208,7 @@ function SettingsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">Privacy settings</p>
-                  <p className="text-xs text-muted-foreground">
-                    Control your data and visibility
-                  </p>
+                  <p className="text-xs text-muted-foreground">Control your data and visibility</p>
                 </div>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </Link>
@@ -229,11 +222,7 @@ function SettingsPage() {
             </p>
             <div className="space-y-1 rounded-2xl border border-border bg-surface">
               <button
-                onClick={() =>
-                  setExpandedSection(
-                    expandedSection === "region" ? null : "region"
-                  )
-                }
+                onClick={() => setExpandedSection(expandedSection === "region" ? null : "region")}
                 className="flex w-full items-center gap-3 px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
@@ -241,9 +230,7 @@ function SettingsPage() {
                 </div>
                 <div className="min-w-0 flex-1 text-left">
                   <p className="text-sm font-semibold">Region</p>
-                  <p className="text-xs text-muted-foreground">
-                    New Orleans Metro
-                  </p>
+                  <p className="text-xs text-muted-foreground">New Orleans Metro</p>
                 </div>
                 <ChevronDown
                   className={`size-4 shrink-0 text-muted-foreground transition-transform ${
@@ -254,8 +241,8 @@ function SettingsPage() {
               {expandedSection === "region" && (
                 <div className="border-t border-border px-4 py-3">
                   <p className="text-xs text-muted-foreground">
-                    QueueLess is currently available in the New Orleans metro
-                    area. We're expanding to more cities soon!
+                    QueueLess is currently available in the New Orleans metro area. We're expanding
+                    to more cities soon!
                   </p>
                 </div>
               )}
@@ -269,7 +256,11 @@ function SettingsPage() {
             </p>
             <div className="space-y-1 rounded-2xl border border-border bg-surface">
               <button
-                onClick={() => alert("Data export feature coming soon! Your data will be exported as a JSON file.")}
+                onClick={() =>
+                  alert(
+                    "Data export feature coming soon! Your data will be exported as a JSON file.",
+                  )
+                }
                 className="flex w-full items-center gap-3 px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
@@ -291,12 +282,8 @@ function SettingsPage() {
                   <Shield className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="text-sm font-semibold text-danger">
-                    Delete account
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Permanently remove your data
-                  </p>
+                  <p className="text-sm font-semibold text-danger">Delete account</p>
+                  <p className="text-xs text-muted-foreground">Permanently remove your data</p>
                 </div>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </Link>
@@ -310,7 +297,12 @@ function SettingsPage() {
             </p>
             <div className="space-y-1 rounded-2xl border border-border bg-surface">
               <button
-                onClick={() => window.open("mailto:support@queueless.app?subject=QueueLess Support Request", "_blank")}
+                onClick={() =>
+                  window.open(
+                    "mailto:support@queueless.app?subject=QueueLess Support Request",
+                    "_blank",
+                  )
+                }
                 className="flex w-full items-center gap-3 px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
@@ -322,7 +314,11 @@ function SettingsPage() {
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </button>
               <button
-                onClick={() => alert("QueueLess v1.0.0\n\nA community-powered wait time app for the New Orleans metro area.\n\n© 2024 QueueLess")}
+                onClick={() =>
+                  alert(
+                    "QueueLess v1.0.0\n\nA community-powered wait time app for the New Orleans metro area.\n\n© 2024 QueueLess",
+                  )
+                }
                 className="flex w-full items-center gap-3 border-t border-border px-4 py-3.5"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">

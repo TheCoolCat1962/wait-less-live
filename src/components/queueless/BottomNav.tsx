@@ -19,9 +19,7 @@ function NavItem({
       className={`flex flex-col items-center gap-1 py-1 ${active ? "text-brand" : "text-foreground/60"}`}
     >
       <Icon className="size-5" strokeWidth={active ? 2.5 : 2} />
-      <span className="text-[10px] font-bold uppercase tracking-wider">
-        {label}
-      </span>
+      <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
     </Link>
   );
 }
@@ -32,12 +30,7 @@ export function BottomNav() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-[430px] items-center justify-between border-t border-border bg-surface/95 px-6 pb-6 pt-3 backdrop-blur">
       <NavItem to="/" icon={Home} label="Home" active={pathname === "/"} />
-      <NavItem
-        to="/search"
-        icon={Search}
-        label="Search"
-        active={pathname.startsWith("/search")}
-      />
+      <NavItem to="/search" icon={Search} label="Search" active={pathname.startsWith("/search")} />
       <button
         type="button"
         onClick={() => open()}
@@ -52,12 +45,7 @@ export function BottomNav() {
         label="Saved"
         active={pathname.startsWith("/favorites")}
       />
-      <NavItem
-        to="/profile"
-        icon={User}
-        label="Profile"
-        active={pathname.startsWith("/profile")}
-      />
+      <NavItem to="/profile" icon={User} label="Profile" active={pathname.startsWith("/profile")} />
     </nav>
   );
 }
