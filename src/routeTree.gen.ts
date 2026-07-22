@@ -15,10 +15,11 @@ import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ReputationRouteImport } from './routes/reputation'
 import { Route as SearchRouteImport } from './routes/search'
-import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SettingsRouteRouteImport } from './routes/settings/route'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as BusinessIdRouteImport } from './routes/business.$id'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsAccountRouteImport } from './routes/settings/account'
 import { Route as SettingsPrivacyRouteImport } from './routes/settings/privacy'
 
@@ -52,7 +53,7 @@ const SearchRoute = SearchRouteImport.update({
   path: '/search',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsRoute = SettingsRouteImport.update({
+const SettingsRouteRoute = SettingsRouteRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => rootRouteImport,
@@ -72,30 +73,36 @@ const BusinessIdRoute = BusinessIdRouteImport.update({
   path: '/business/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
 const SettingsAccountRoute = SettingsAccountRouteImport.update({
   id: '/account',
   path: '/account',
-  getParentRoute: () => SettingsRoute,
+  getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsPrivacyRoute = SettingsPrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
-  getParentRoute: () => SettingsRoute,
+  getParentRoute: () => SettingsRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/favorites': typeof FavoritesRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
   '/settings/account': typeof SettingsAccountRoute
   '/settings/privacy': typeof SettingsPrivacyRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -104,43 +111,45 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
   '/settings/account': typeof SettingsAccountRoute
   '/settings/privacy': typeof SettingsPrivacyRoute
+  '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/favorites': typeof FavoritesRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
   '/settings/account': typeof SettingsAccountRoute
   '/settings/privacy': typeof SettingsPrivacyRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/settings'
     | '/favorites'
     | '/notifications'
     | '/profile'
     | '/reputation'
     | '/search'
-    | '/settings'
     | '/sign-in'
     | '/auth/callback'
     | '/business/$id'
     | '/settings/account'
     | '/settings/privacy'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -149,36 +158,37 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reputation'
     | '/search'
-    | '/settings'
     | '/sign-in'
     | '/auth/callback'
     | '/business/$id'
     | '/settings/account'
     | '/settings/privacy'
+    | '/settings'
   id:
     | '__root__'
     | '/'
+    | '/settings'
     | '/favorites'
     | '/notifications'
     | '/profile'
     | '/reputation'
     | '/search'
-    | '/settings'
     | '/sign-in'
     | '/auth/callback'
     | '/business/$id'
     | '/settings/account'
     | '/settings/privacy'
+    | '/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   FavoritesRoute: typeof FavoritesRoute
   NotificationsRoute: typeof NotificationsRoute
   ProfileRoute: typeof ProfileRoute
   ReputationRoute: typeof ReputationRoute
   SearchRoute: typeof SearchRoute
-  SettingsRoute: typeof SettingsRouteWithChildren
   SignInRoute: typeof SignInRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BusinessIdRoute: typeof BusinessIdRoute
@@ -232,7 +242,7 @@ declare module '@tanstack/react-router' {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
+      preLoaderRoute: typeof SettingsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sign-in': {
@@ -256,45 +266,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BusinessIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
     '/settings/account': {
       id: '/settings/account'
       path: '/account'
       fullPath: '/settings/account'
       preLoaderRoute: typeof SettingsAccountRouteImport
-      parentRoute: typeof SettingsRoute
+      parentRoute: typeof SettingsRouteRoute
     }
     '/settings/privacy': {
       id: '/settings/privacy'
       path: '/privacy'
       fullPath: '/settings/privacy'
       preLoaderRoute: typeof SettingsPrivacyRouteImport
-      parentRoute: typeof SettingsRoute
+      parentRoute: typeof SettingsRouteRoute
     }
   }
 }
 
-interface SettingsRouteChildren {
+interface SettingsRouteRouteChildren {
   SettingsAccountRoute: typeof SettingsAccountRoute
   SettingsPrivacyRoute: typeof SettingsPrivacyRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
-const SettingsRouteChildren: SettingsRouteChildren = {
+const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsAccountRoute: SettingsAccountRoute,
   SettingsPrivacyRoute: SettingsPrivacyRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
 }
 
-const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
-  SettingsRouteChildren,
+const SettingsRouteRouteWithChildren = SettingsRouteRoute._addFileChildren(
+  SettingsRouteRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SettingsRouteRoute: SettingsRouteRouteWithChildren,
   FavoritesRoute: FavoritesRoute,
   NotificationsRoute: NotificationsRoute,
   ProfileRoute: ProfileRoute,
   ReputationRoute: ReputationRoute,
   SearchRoute: SearchRoute,
-  SettingsRoute: SettingsRouteWithChildren,
   SignInRoute: SignInRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BusinessIdRoute: BusinessIdRoute,

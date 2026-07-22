@@ -15,12 +15,11 @@ import {
   ChevronDown,
   CheckCircle,
 } from "lucide-react";
-import { AppShell } from "@/components/queueless/AppShell";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings";
 import { useTheme } from "@/lib/theme";
 
-export const Route = createFileRoute("/settings")({
+export const Route = createFileRoute("/settings/")({
   component: SettingsPage,
 });
 
@@ -75,7 +74,7 @@ function SettingsPage() {
   };
 
   return (
-    <AppShell>
+    <>
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-border bg-surface/90 px-5 py-4 backdrop-blur">
         <div className="flex items-center gap-3">
@@ -357,6 +356,6 @@ function SettingsPage() {
           </button>
         </div>
       </main>
-    </AppShell>
+    </>
   );
 }

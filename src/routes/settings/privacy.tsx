@@ -7,7 +7,6 @@ import {
   CheckCircle,
   Loader2,
 } from "lucide-react";
-import { AppShell } from "@/components/queueless/AppShell";
 import { useSettings } from "@/lib/settings";
 
 export const Route = createFileRoute("/settings/privacy")({
@@ -18,7 +17,7 @@ function PrivacyPage() {
   const { settings, toggleSetting, syncing } = useSettings();
 
   return (
-    <AppShell>
+    <>
       {/* Header */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-surface/90 px-4 py-3 backdrop-blur">
         <Link 
@@ -249,6 +248,6 @@ function PrivacyPage() {
           </p>
         </div>
       </main>
-    </AppShell>
+    </>
   );
 }
