@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Check, Loader2, Play, Square, Timer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReportSheet } from "./ReportSheetContext";
-import { WAIT_OPTIONS, type WaitLevel, type ReportSource, getReporterKey } from "@/lib/queueless-data";
+import { useAuth } from "@/lib/auth";
+import {
+  WAIT_OPTIONS,
+  type WaitLevel,
+  type ReportSource,
+  getReporterKey,
+} from "@/lib/queueless-data";
 import { fetchNearbyBusinesses, submitWaitReport } from "@/lib/queueless.functions";
 import { useLocation } from "@/lib/location";
 
@@ -17,6 +23,7 @@ type Mode = "quick" | "exact" | "timer";
 
 export function ReportSheet() {
   const { isOpen, businessId, close } = useReportSheet();
+  const { user } = useAuth();
   const { location } = useLocation();
   const qc = useQueryClient();
 
@@ -84,9 +91,7 @@ export function ReportSheet() {
   if (!isOpen) return null;
 
   // Elapsed timer minutes (rounded)
-  const elapsedMs = timerStart
-    ? (timerEnd ?? Date.now() + tick * 0) - timerStart
-    : 0;
+  const elapsedMs = timerStart ? (timerEnd ?? Date.now() + tick * 0) - timerStart : 0;
   const elapsedMin = Math.max(0, Math.round(elapsedMs / 60000));
   const elapsedSec = Math.floor((elapsedMs / 1000) % 60);
   const elapsedTotalMin = Math.floor(elapsedMs / 60000);
@@ -100,7 +105,7 @@ export function ReportSheet() {
         data: {
           businessId: activeBizId,
           minutes,
-          reporterKey: getReporterKey(),
+          reporterKey: user?.id || getReporterKey(),
           source,
           comment: comment.trim() || undefined,
         },
@@ -245,9 +250,7 @@ export function ReportSheet() {
             </div>
 
             {mode === "quick" && (
-              <div className="grid grid-cols-2 gap-2">
-                {WAIT_OPTIONS.map(bucketButton)}
-              </div>
+              <div className="grid grid-cols-2 gap-2">{WAIT_OPTIONS.map(bucketButton)}</div>
             )}
 
             {mode === "exact" && (
@@ -282,8 +285,7 @@ export function ReportSheet() {
                 <div className="grid place-items-center rounded-2xl border-2 border-dashed border-border bg-surface-muted/40 py-8">
                   <Timer className="mb-2 size-6 text-brand" />
                   <p className="text-4xl font-black tabular-nums">
-                    {String(elapsedTotalMin).padStart(2, "0")}:
-                    {String(elapsedSec).padStart(2, "0")}
+                    {String(elapsedTotalMin).padStart(2, "0")}:{String(elapsedSec).padStart(2, "0")}
                   </p>
                   <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
                     {!timerStart ? "Ready when you are" : timerEnd ? "Stopped" : "Timing your wait"}
@@ -311,7 +313,8 @@ export function ReportSheet() {
                 {timerEnd && (
                   <div className="space-y-2">
                     <p className="text-center text-sm font-semibold text-muted-foreground">
-                      You waited <span className="font-black text-foreground">{elapsedMin}</span> minute
+                      You waited <span className="font-black text-foreground">{elapsedMin}</span>{" "}
+                      minute
                       {elapsedMin === 1 ? "" : "s"}. Submit this report?
                     </p>
                     <button
