@@ -15,6 +15,10 @@ import {
   MapPin,
 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
+import { useAuth } from "@/lib/auth";
+import { useQuery } from "@tanstack/react-query";
+import { getUserReputation } from "@/lib/queueless.functions";
+import { getReporterKey } from "@/lib/queueless-data";
 
 export const Route = createFileRoute("/reputation")({
   component: ReputationPage,
@@ -122,12 +126,21 @@ const mockBadges: Badge[] = [
 ];
 
 function ReputationPage() {
-  const [loading] = useState(false);
-  const [error] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"stats" | "badges">("stats");
+  const { user } = useAuth();
+  const reporterKeys = [user?.id, getReporterKey()].filter(Boolean) as string[];
+  const reputationQuery = useQuery({
+    queryKey: ["reputation", reporterKeys],
+    queryFn: () => getUserReputation({ data: { reporterKeys } }),
+    enabled: true,
+  });
 
-  const earnedBadges = mockBadges.filter((b) => b.earned);
-  const inProgressBadges = mockBadges.filter((b) => !b.earned);
+  const loading = reputationQuery.isLoading;
+  const data = reputationQuery.data;
+  const dataBadges = reputationQuery.data?.badges ?? mockBadges;
+
+  const earnedBadges = dataBadges.filter((b) => b.earned);
+  const inProgressBadges = dataBadges.filter((b) => !b.earned);
 
   return (
     <AppShell>
@@ -141,19 +154,10 @@ function ReputationPage() {
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Community
             </p>
-            <h1 className="text-xl font-extrabold tracking-tight">
-              Reputation & Badges
-            </h1>
+            <h1 className="text-xl font-extrabold tracking-tight">Reputation & Badges</h1>
           </div>
         </div>
       </header>
-
-      {/* Error State */}
-      {error && (
-        <div className="mx-5 mt-4 rounded-xl border border-danger/30 bg-danger/10 p-4">
-          <p className="text-sm font-medium text-danger">{error}</p>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border px-5">
@@ -175,13 +179,13 @@ function ReputationPage() {
               : "border-transparent text-muted-foreground"
           }`}
         >
-          Badges ({earnedBadges.length}/{mockBadges.length})
+          Badges ({earnedBadges.length}/{dataBadges.length})
         </button>
       </div>
 
       {/* Content */}
       <main className="px-5 py-4">
-        {loading ? (
+        {loading || !data ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             Loading reputation…
@@ -195,30 +199,24 @@ function ReputationPage() {
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Current rank
                   </p>
-                  <p className="mt-1 text-2xl font-black text-brand">
-                    {mockStats.rank}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {mockStats.points} points
-                  </p>
+                  <p className="mt-1 text-2xl font-black text-brand">{data.rank}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{data.points} points</p>
                 </div>
                 <div className="text-right">
                   <Medal className="ml-auto size-12 text-brand" />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Next: {mockStats.nextRank}
-                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">Next: {data.nextRank}</p>
                 </div>
               </div>
               <div className="mt-4">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Progress to {mockStats.nextRank}</span>
-                  <span>{mockStats.pointsToNextRank} pts to go</span>
+                  <span>Progress to {data.nextRank}</span>
+                  <span>{data.pointsToNextRank} pts to go</span>
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-border">
                   <div
                     className="h-2 rounded-full bg-brand transition-all"
                     style={{
-                      width: `${(mockStats.points / (mockStats.points + mockStats.pointsToNextRank)) * 100}%`,
+                      width: `${(data.points / (data.points + data.pointsToNextRank)) * 100}%`,
                     }}
                   />
                 </div>
@@ -228,20 +226,20 @@ function ReputationPage() {
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-border bg-surface p-4 text-center">
-                <p className="text-2xl font-black">{mockStats.totalReports}</p>
+                <p className="text-2xl font-black">{data.totalReports}</p>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Total reports
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-surface p-4 text-center">
-                <p className="text-2xl font-black">{mockStats.accuracyRate}%</p>
+                <p className="text-2xl font-black">{data.accuracyRate}%</p>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Accuracy
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-surface p-4 text-center">
                 <div className="flex items-center justify-center gap-1">
-                  <p className="text-2xl font-black">{mockStats.currentStreak}</p>
+                  <p className="text-2xl font-black">{data.currentStreak}</p>
                   <span className="text-xs text-safe">🔥</span>
                 </div>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -249,7 +247,7 @@ function ReputationPage() {
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-surface p-4 text-center">
-                <p className="text-2xl font-black">{mockStats.longestStreak}</p>
+                <p className="text-2xl font-black">{data.longestStreak}</p>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Best streak
                 </p>
@@ -313,9 +311,7 @@ function ReputationPage() {
                         </div>
                         <div className="flex-1">
                           <p className="font-bold text-brand">{badge.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {badge.description}
-                          </p>
+                          <p className="text-xs text-muted-foreground">{badge.description}</p>
                           <p className="mt-1 text-[10px] text-muted-foreground">
                             Earned {badge.earnedDate}
                           </p>
@@ -346,9 +342,7 @@ function ReputationPage() {
                         </div>
                         <div className="flex-1">
                           <p className="font-bold">{badge.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {badge.description}
-                          </p>
+                          <p className="text-xs text-muted-foreground">{badge.description}</p>
                           {badge.progress !== undefined && (
                             <div className="mt-2">
                               <div className="h-1.5 w-full rounded-full bg-border">

@@ -167,7 +167,9 @@ export const geocodeQuery = createServerFn({ method: "POST" })
       }>;
     };
     if (json.status !== "OK" || !json.results.length) {
-      throw new Error("We couldn't find that location. Try a New Orleans ZIP code, neighborhood, or address.");
+      throw new Error(
+        "We couldn't find that location. Try a New Orleans ZIP code, neighborhood, or address.",
+      );
     }
     // Prefer a result inside the NOLA bounding box when available.
     const inMetro = json.results.find((r) =>
@@ -181,7 +183,6 @@ export const geocodeQuery = createServerFn({ method: "POST" })
       inNolaMetro: isInNolaMetro(r.geometry.location.lat, r.geometry.location.lng),
     };
   });
-
 
 // ---------------------------------------------------------------------------
 // Business type filtering — inclusive by default
@@ -236,7 +237,6 @@ const EXCLUDED_TYPES_SET = new Set([
   // Non-public offices (users can still add manually via search)
   "farm",
 ]);
-
 
 // Category label + emoji for a given Place. Prefers primary_type.
 const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
@@ -303,13 +303,14 @@ const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
 };
 
 function pickCategory(primaryType: string | undefined, types: string[] | undefined) {
-  if (primaryType && CATEGORY_MAP[primaryType]) return { primary: primaryType, ...CATEGORY_MAP[primaryType] };
+  if (primaryType && CATEGORY_MAP[primaryType])
+    return { primary: primaryType, ...CATEGORY_MAP[primaryType] };
   if (types) {
     for (const t of types) {
       if (CATEGORY_MAP[t]) return { primary: t, ...CATEGORY_MAP[t] };
     }
   }
-  return { primary: primaryType ?? (types?.[0] ?? "place"), label: "Place", emoji: "📍" };
+  return { primary: primaryType ?? types?.[0] ?? "place", label: "Place", emoji: "📍" };
 }
 
 function isExcluded(primaryType: string | undefined, types: string[] | undefined) {
@@ -431,7 +432,13 @@ type StoredReport = { minutes: number; created_at: string; source: string | null
 
 // Weighted current wait: newer + timer reports weigh more; ignore obvious outliers.
 function aggregateReports(reports: StoredReport[]) {
-  if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, trend: "stable" as "up" | "down" | "stable" };
+  if (!reports.length)
+    return {
+      current: null as number | null,
+      count: 0,
+      latest: null as string | null,
+      trend: "stable" as "up" | "down" | "stable",
+    };
 
   const now = Date.now();
   // Only reports within the last 90 minutes count as "current".
@@ -593,10 +600,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
           milesBetween(data.lat, data.lng, b.lat, b.lng),
       );
     if (cachedNearby.length) {
-      const newest = cachedNearby.reduce(
-        (max, b) => (b.updated_at > max ? b.updated_at : max),
-        "",
-      );
+      const newest = cachedNearby.reduce((max, b) => (b.updated_at > max ? b.updated_at : max), "");
       const areaFresh = newest && Date.now() - new Date(newest).getTime() < BUSINESS_CACHE_TTL_MS;
       if (areaFresh) {
         const candidates = cachedNearby.map(({ updated_at, ...b }) => b);
@@ -689,7 +693,9 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     const placeIds = rows.map((r) => r.google_place_id);
     const { data: storedRaw, error: readErr } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .in("google_place_id", placeIds.length ? placeIds : ["__none__"]);
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
@@ -710,7 +716,9 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: businessRaw, error } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -724,8 +732,12 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(30);
     const reports = (reportsRaw ?? []) as Array<{
-      id: string; minutes: number; created_at: string; reporter_key: string | null;
-      source: string | null; comment: string | null;
+      id: string;
+      minutes: number;
+      created_at: string;
+      reporter_key: string | null;
+      source: string | null;
+      comment: string | null;
     }>;
 
     const agg = aggregateReports(
@@ -755,24 +767,25 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
 // Submit a wait-time report
 // ---------------------------------------------------------------------------
 export const submitWaitReport = createServerFn({ method: "POST" })
-  .inputValidator((data: {
-    businessId: string;
-    minutes: number;
-    reporterKey: string;
-    source?: "quick" | "exact" | "timer";
-    comment?: string;
-  }) => {
-    const id = String(data?.businessId ?? "");
-    const m = Number(data?.minutes);
-    const key = String(data?.reporterKey ?? "").slice(0, 64);
-    const source = data?.source && ["quick", "exact", "timer"].includes(data.source)
-      ? data.source
-      : "quick";
-    const comment = data?.comment ? String(data.comment).trim().slice(0, 200) : null;
-    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid business id");
-    if (!Number.isFinite(m) || m < 0 || m > 240) throw new Error("Invalid wait time");
-    return { businessId: id, minutes: Math.round(m), reporterKey: key, source, comment };
-  })
+  .inputValidator(
+    (data: {
+      businessId: string;
+      minutes: number;
+      reporterKey: string;
+      source?: "quick" | "exact" | "timer";
+      comment?: string;
+    }) => {
+      const id = String(data?.businessId ?? "");
+      const m = Number(data?.minutes);
+      const key = String(data?.reporterKey ?? "").slice(0, 64);
+      const source =
+        data?.source && ["quick", "exact", "timer"].includes(data.source) ? data.source : "quick";
+      const comment = data?.comment ? String(data.comment).trim().slice(0, 200) : null;
+      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid business id");
+      if (!Number.isFinite(m) || m < 0 || m > 240) throw new Error("Invalid wait time");
+      return { businessId: id, minutes: Math.round(m), reporterKey: key, source, comment };
+    },
+  )
   .handler(async ({ data }) => {
     const supabase = getSupabase();
     const { error } = await supabase.from("wait_reports").insert({
@@ -799,7 +812,9 @@ export const getBusinessesByIds = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: rows, error } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .in("id", data.ids);
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -927,7 +942,9 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     const placeIds = rows.map((r) => r.google_place_id);
     const { data: storedRaw, error: readErr } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .in("google_place_id", placeIds.length ? placeIds : ["__none__"]);
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
@@ -941,3 +958,204 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     return withAggregatedWaits(supabase, stored);
   });
 
+// ---------------------------------------------------------------------------
+// Fetch User Reputation and Badges
+// ---------------------------------------------------------------------------
+export const getUserReputation = createServerFn({ method: "POST" })
+  .inputValidator((data: { reporterKeys: string[] }) => {
+    return { reporterKeys: data.reporterKeys.filter(Boolean) };
+  })
+  .handler(async ({ data }) => {
+    if (!data.reporterKeys.length) {
+      return {
+        totalReports: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        points: 0,
+        rank: "Bronze Reporter",
+        nextRank: "Silver Reporter",
+        pointsToNextRank: 500,
+        badges: [],
+        verifiedReports: 0,
+        accuracyRate: 100,
+      };
+    }
+
+    const supabase = getSupabase();
+
+    // Fetch all reports for these keys
+    const { data: reports, error } = await supabase
+      .from("wait_reports")
+      .select("created_at")
+      .in("reporter_key", data.reporterKeys)
+      .order("created_at", { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    const totalReports = reports?.length ?? 0;
+    const points = totalReports * 10;
+
+    let rank = "Bronze Reporter";
+    let nextRank = "Silver Reporter";
+    let pointsToNextRank = 500 - points;
+
+    if (points >= 500) {
+      rank = "Silver Reporter";
+      nextRank = "Gold Reporter";
+      pointsToNextRank = 2000 - points;
+    }
+    if (points >= 2000) {
+      rank = "Gold Reporter";
+      nextRank = "Platinum Reporter";
+      pointsToNextRank = 5000 - points;
+    }
+    if (points >= 5000) {
+      rank = "Platinum Reporter";
+      nextRank = "Diamond Reporter";
+      pointsToNextRank = 10000 - points;
+    }
+
+    if (pointsToNextRank < 0) {
+      pointsToNextRank = 0;
+    }
+
+    // Calculate Streaks
+    // Extract unique local dates (YYYY-MM-DD)
+    const dates = Array.from(
+      new Set(
+        (reports ?? []).map((r) => {
+          const d = new Date(r.created_at);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        }),
+      ),
+    ).sort();
+
+    let longestStreak = 0;
+    let currentStreak = 0;
+
+    if (dates.length > 0) {
+      let currentSeq = 1;
+      let maxSeq = 1;
+
+      for (let i = 1; i < dates.length; i++) {
+        const prev = new Date(dates[i - 1]);
+        const curr = new Date(dates[i]);
+        const diffTime = Math.abs(curr.getTime() - prev.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 1) {
+          currentSeq++;
+          maxSeq = Math.max(maxSeq, currentSeq);
+        } else {
+          currentSeq = 1;
+        }
+      }
+      longestStreak = maxSeq;
+
+      // Calculate current streak
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+
+      const lastDateStr = dates[dates.length - 1];
+
+      if (lastDateStr === todayStr || lastDateStr === yesterdayStr) {
+        let streak = 1;
+        let checkDate = new Date(lastDateStr);
+        for (let i = dates.length - 2; i >= 0; i--) {
+          const d = new Date(dates[i]);
+          const diffTime = Math.abs(checkDate.getTime() - d.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) {
+            streak++;
+            checkDate = d;
+          } else {
+            break;
+          }
+        }
+        currentStreak = streak;
+      }
+    }
+
+    const mockBadges = [
+      {
+        id: "early_bird",
+        name: "Early Bird",
+        description: "Submit a report before 8 AM",
+        iconName: "Zap",
+        earned: true,
+        earnedDate: "Mar 15, 2024",
+      },
+      {
+        id: "night_owl",
+        name: "Night Owl",
+        description: "Submit a report after 10 PM",
+        iconName: "Star",
+        earned: true,
+        earnedDate: "Feb 28, 2024",
+      },
+      {
+        id: "streaker",
+        name: "7-Day Streak",
+        description: "Report for 7 consecutive days",
+        iconName: "Target",
+        earned: longestStreak >= 7,
+        earnedDate: longestStreak >= 7 ? "Recent" : undefined,
+      },
+      {
+        id: "century",
+        name: "Century Club",
+        description: "Submit 100 reports",
+        iconName: "Award",
+        earned: totalReports >= 100,
+        progress: totalReports >= 100 ? undefined : totalReports,
+      },
+      {
+        id: "accuracy_master",
+        name: "Accuracy Master",
+        description: "Achieve 95% verification rate",
+        iconName: "Shield",
+        earned: false,
+        progress: 89,
+      },
+      {
+        id: "local_expert",
+        name: "Local Expert",
+        description: "Report at 25 unique businesses",
+        iconName: "MapPin",
+        earned: false,
+        progress: 18,
+      },
+      {
+        id: "verifier",
+        name: "Community Verifier",
+        description: "Help verify 50 reports",
+        iconName: "Users",
+        earned: false,
+        progress: 0,
+      },
+      {
+        id: "streak_master",
+        name: "Streak Master",
+        description: "Maintain a 30-day streak",
+        iconName: "TrendingUp",
+        earned: longestStreak >= 30,
+        progress: longestStreak >= 30 ? undefined : longestStreak,
+      },
+    ];
+
+    return {
+      totalReports,
+      points,
+      rank,
+      nextRank,
+      pointsToNextRank,
+      currentStreak,
+      longestStreak,
+      badges: mockBadges,
+      verifiedReports: Math.floor(totalReports * 0.9), // mock verified reports
+      accuracyRate: totalReports > 0 ? 100 : 0, // mock accuracy
+    };
+  });
