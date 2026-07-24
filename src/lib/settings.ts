@@ -52,25 +52,27 @@ async function loadFromSupabase(userId: string): Promise<AppSettings | null> {
   try {
     const client = getSupabaseClient();
     if (!client) return null;
-    
+
     const { data, error } = await client
       .from("user_settings")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
-    
+
     if (error) {
       console.error("[Settings] Error loading from Supabase:", error);
       return null;
     }
-    
+
     if (data) {
       return {
         dark_mode: (data as any).dark_mode ?? DEFAULT_SETTINGS.dark_mode,
         push_notifications: (data as any).push_notifications ?? DEFAULT_SETTINGS.push_notifications,
-        email_notifications: (data as any).email_notifications ?? DEFAULT_SETTINGS.email_notifications,
+        email_notifications:
+          (data as any).email_notifications ?? DEFAULT_SETTINGS.email_notifications,
         location_accuracy: (data as any).location_accuracy ?? DEFAULT_SETTINGS.location_accuracy,
-        show_in_leaderboard: (data as any).show_in_leaderboard ?? DEFAULT_SETTINGS.show_in_leaderboard,
+        show_in_leaderboard:
+          (data as any).show_in_leaderboard ?? DEFAULT_SETTINGS.show_in_leaderboard,
         allow_analytics: (data as any).allow_analytics ?? DEFAULT_SETTINGS.allow_analytics,
       };
     }
@@ -86,17 +88,18 @@ async function saveToSupabase(userId: string, settings: AppSettings): Promise<bo
   try {
     const client = getSupabaseClient();
     if (!client) return false;
-    
-    const { error } = await client
-      .from("user_settings")
-      .upsert({
+
+    const { error } = await client.from("user_settings").upsert(
+      {
         user_id: userId,
         ...settings,
         updated_at: new Date().toISOString(),
-      }, {
+      },
+      {
         onConflict: "user_id",
-      });
-    
+      },
+    );
+
     if (error) {
       console.error("[Settings] Error saving to Supabase:", error);
       return false;
@@ -139,7 +142,7 @@ export function useSettings() {
 
       // Get current user
       const user = await getCurrentUser();
-      
+
       if (user) {
         userIdRef.current = user.id;
         // Try to load from Supabase
@@ -152,15 +155,17 @@ export function useSettings() {
         }
       }
     }
-    
+
     init();
 
     // Listen for auth changes
     const client = clientRef.current;
     if (client) {
-      const { data: { subscription } } = client.auth.onAuthStateChange(async (event, session) => {
+      const {
+        data: { subscription },
+      } = client.auth.onAuthStateChange(async (event, session) => {
         console.log("[Settings] Auth state changed:", event);
-        
+
         if (event === "SIGNED_IN" && session?.user) {
           userIdRef.current = session.user.id;
           // Reload settings when user signs in
@@ -200,7 +205,7 @@ export function useSettings() {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    
+
     saveTimeoutRef.current = setTimeout(async () => {
       if (userIdRef.current) {
         setSyncing(true);
@@ -212,21 +217,24 @@ export function useSettings() {
   }, []);
 
   // Update a single setting
-  const updateSetting = useCallback(<K extends keyof AppSettings>(
-    key: K,
-    value: AppSettings[K]
-  ) => {
-    const newSettings = { ...settings, [key]: value };
-    saveSettings(newSettings);
-    console.log(`[Settings] Updated ${key}:`, value);
-  }, [settings, saveSettings]);
+  const updateSetting = useCallback(
+    <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+      const newSettings = { ...settings, [key]: value };
+      saveSettings(newSettings);
+      console.log(`[Settings] Updated ${key}:`, value);
+    },
+    [settings, saveSettings],
+  );
 
   // Toggle a boolean setting
-  const toggleSetting = useCallback((key: keyof AppSettings) => {
-    if (typeof settings[key] === "boolean") {
-      updateSetting(key, !settings[key]);
-    }
-  }, [settings, updateSetting]);
+  const toggleSetting = useCallback(
+    (key: keyof AppSettings) => {
+      if (typeof settings[key] === "boolean") {
+        updateSetting(key, !settings[key]);
+      }
+    },
+    [settings, updateSetting],
+  );
 
   return {
     settings,

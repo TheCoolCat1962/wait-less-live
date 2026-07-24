@@ -1,16 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import {
-  Bell,
-  BellOff,
-  ChevronRight,
-  Loader2,
-  MapPin,
-  Star,
-  Clock,
-  Check,
-  X,
-} from "lucide-react";
+import { Bell, BellOff, ChevronRight, Loader2, MapPin, Star, Clock, Check, X } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 
 export const Route = createFileRoute("/notifications")({
@@ -98,9 +88,7 @@ function NotificationsPage() {
     try {
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 500));
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, read: true }))
-      );
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
       setError("Failed to mark notifications as read");
     } finally {
@@ -109,9 +97,7 @@ function NotificationsPage() {
   };
 
   const markAsRead = async (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
   const deleteNotification = async (id: string) => {
@@ -162,8 +148,7 @@ function NotificationsPage() {
             </div>
             <h2 className="mt-4 text-lg font-extrabold">No notifications yet</h2>
             <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              When you favorite places or submit reports, you'll get notified about
-              updates here.
+              When you favorite places or submit reports, you'll get notified about updates here.
             </p>
             <Link
               to="/"
@@ -180,9 +165,7 @@ function NotificationsPage() {
                 <div
                   key={notification.id}
                   className={`group relative rounded-2xl border p-4 transition-colors ${
-                    notification.read
-                      ? "border-border bg-surface"
-                      : "border-brand/30 bg-brand/5"
+                    notification.read ? "border-border bg-surface" : "border-brand/30 bg-brand/5"
                   }`}
                 >
                   <button
@@ -209,9 +192,7 @@ function NotificationsPage() {
                           <span className="size-2 shrink-0 rounded-full bg-brand" />
                         )}
                       </div>
-                      <p className="mt-0.5 text-sm text-muted-foreground">
-                        {notification.message}
-                      </p>
+                      <p className="mt-0.5 text-sm text-muted-foreground">{notification.message}</p>
                       <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
                         <Clock className="size-3" />
                         <span>{notification.time}</span>
@@ -241,9 +222,7 @@ function NotificationsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold">Wait time alerts</p>
-                <p className="text-xs text-muted-foreground">
-                  Get notified when wait times change
-                </p>
+                <p className="text-xs text-muted-foreground">Get notified when wait times change</p>
               </div>
               <button className="relative h-6 w-11 rounded-full bg-brand transition-colors">
                 <span className="absolute right-1 top-1 size-4 rounded-full bg-white shadow" />
@@ -254,9 +233,7 @@ function NotificationsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold">Favorite updates</p>
-                <p className="text-xs text-muted-foreground">
-                  Alerts when favorites have low wait
-                </p>
+                <p className="text-xs text-muted-foreground">Alerts when favorites have low wait</p>
               </div>
               <button className="relative h-6 w-11 rounded-full bg-brand transition-colors">
                 <span className="absolute right-1 top-1 size-4 rounded-full bg-white shadow" />

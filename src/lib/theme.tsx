@@ -16,7 +16,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Apply dark mode class to document
   useEffect(() => {
     if (typeof document === "undefined") return;
-    
+
     const root = document.documentElement;
     if (isDark) {
       root.classList.add("dark");
@@ -29,7 +29,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Initialize theme on mount
   useEffect(() => {
     if (typeof document === "undefined") return;
-    
+
     const root = document.documentElement;
     if (isDark) {
       root.classList.add("dark");
@@ -47,9 +47,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ThemeContext.Provider value={{ isDark, toggle, setDark }}>
-      {children}
-    </ThemeContext.Provider>
+    <ThemeContext.Provider value={{ isDark, toggle, setDark }}>{children}</ThemeContext.Provider>
   );
 }
 

@@ -73,28 +73,35 @@ export function getAuthErrorMessage(error: AuthError | null): string {
 
   // Check for partial matches
   const lowerMessage = message.toLowerCase();
-  
-  if (lowerMessage.includes("network") || lowerMessage.includes("fetch") || lowerMessage.includes("connection")) {
+
+  if (
+    lowerMessage.includes("network") ||
+    lowerMessage.includes("fetch") ||
+    lowerMessage.includes("connection")
+  ) {
     return "Network error. Please check your internet connection and try again.";
   }
-  
+
   if (lowerMessage.includes("invalid") && lowerMessage.includes("email")) {
     return "Invalid email address. Please check and try again.";
   }
-  
+
   if (lowerMessage.includes("password") && lowerMessage.includes("weak")) {
     return "Password is too weak. Please use at least 6 characters.";
   }
-  
+
   if (lowerMessage.includes("already") && lowerMessage.includes("exist")) {
     return "An account with this email already exists. Try signing in instead.";
   }
-  
+
   if (lowerMessage.includes("not confirmed") || lowerMessage.includes("not verified")) {
     return "Email not verified. Please check your inbox and click the verification link.";
   }
-  
-  if (lowerMessage.includes("expired") || lowerMessage.includes("invalid") && lowerMessage.includes("token")) {
+
+  if (
+    lowerMessage.includes("expired") ||
+    (lowerMessage.includes("invalid") && lowerMessage.includes("token"))
+  ) {
     return "Verification link has expired or is invalid. Please request a new one.";
   }
 
@@ -102,23 +109,23 @@ export function getAuthErrorMessage(error: AuthError | null): string {
   if (status === 400) {
     return "Invalid request. Please check your input and try again.";
   }
-  
+
   if (status === 401) {
     return "Authentication failed. Please check your credentials.";
   }
-  
+
   if (status === 403) {
     return "Access denied. Please sign in again.";
   }
-  
+
   if (status === 404) {
     return "Account not found. Please create an account first.";
   }
-  
+
   if (status === 429) {
     return "Too many requests. Please wait a moment and try again.";
   }
-  
+
   if (status === 500 || status === 502 || status === 503) {
     return "Server error. Please try again later.";
   }
@@ -136,7 +143,7 @@ export function isEmailConfirmationError(error: AuthError | null): boolean {
   return (
     message.includes("not confirmed") ||
     message.includes("not verified") ||
-    message.includes("email") && message.includes("confirm")
+    (message.includes("email") && message.includes("confirm"))
   );
 }
 
@@ -172,12 +179,12 @@ export function isNetworkError(error: AuthError | null): boolean {
  */
 export function getAuthEventLabel(event: string): string {
   const labels: Record<string, string> = {
-    "SIGNED_IN": "Signed in",
-    "SIGNED_OUT": "Signed out",
-    "USER_UPDATED": "Account updated",
-    "PASSWORD_RECOVERY": "Password recovery",
-    "TOKEN_REFRESHED": "Session refreshed",
-    "MFA_CHALLENGE_VERIFIED": "MFA verified",
+    SIGNED_IN: "Signed in",
+    SIGNED_OUT: "Signed out",
+    USER_UPDATED: "Account updated",
+    PASSWORD_RECOVERY: "Password recovery",
+    TOKEN_REFRESHED: "Session refreshed",
+    MFA_CHALLENGE_VERIFIED: "MFA verified",
   };
   return labels[event] || event;
 }

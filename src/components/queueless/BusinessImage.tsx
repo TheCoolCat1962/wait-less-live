@@ -1,6 +1,11 @@
 import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { type Business, emojiForBusiness, photoUrlForWidth, gradientForBusiness } from "@/lib/queueless-data";
+import {
+  type Business,
+  emojiForBusiness,
+  photoUrlForWidth,
+  gradientForBusiness,
+} from "@/lib/queueless-data";
 
 type ImageBusiness = Pick<Business, "logo_url" | "primary_type" | "category">;
 
@@ -9,7 +14,7 @@ const RETRY_DELAY_MS = 1000;
 
 // Renders a business's primary Google Places photo, filling its parent (which
 // owns the size/aspect ratio and rounding). Falls back to a clean, category-
-// specific placeholder when there is no photo or the image fails to load — 
+// specific placeholder when there is no photo or the image fails to load —
 // never a blank area or broken-image icon. Lazy-loaded by default for smooth scrolling.
 export function BusinessImage({
   business,
@@ -44,15 +49,19 @@ export function BusinessImage({
   const handleError = () => {
     if (retryCount.current < MAX_RETRIES) {
       retryCount.current++;
-      console.log(`[BusinessImage] Retrying photo load (attempt ${retryCount.current + 1}/${MAX_RETRIES + 1})`);
+      console.log(
+        `[BusinessImage] Retrying photo load (attempt ${retryCount.current + 1}/${MAX_RETRIES + 1})`,
+      );
       setLoadState("loading");
       // Force reload by adding cache-busting query param
-      const newSrc = `${currentSrc}${currentSrc.includes('?') ? '&' : '?'}retry=${Date.now()}`;
+      const newSrc = `${currentSrc}${currentSrc.includes("?") ? "&" : "?"}retry=${Date.now()}`;
       setTimeout(() => {
         setCurrentSrc(newSrc);
       }, RETRY_DELAY_MS * retryCount.current);
     } else {
-      console.log(`[BusinessImage] Photo failed after ${MAX_RETRIES + 1} attempts, showing placeholder`);
+      console.log(
+        `[BusinessImage] Photo failed after ${MAX_RETRIES + 1} attempts, showing placeholder`,
+      );
       setLoadState("failed");
     }
   };
