@@ -6,10 +6,7 @@ import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
 import { distanceMiles, type BusinessWithWait } from "@/lib/queueless-data";
 import { useLocation } from "@/lib/location";
-import {
-  fetchNearbyBusinesses,
-  searchBusinessesByText,
-} from "@/lib/queueless.functions";
+import { fetchNearbyBusinesses, searchBusinessesByText } from "@/lib/queueless.functions";
 
 export const Route = createFileRoute("/search")({
   component: SearchPage,
@@ -69,9 +66,7 @@ function SearchPage() {
 
   const list: BusinessWithWait[] = (activeQuery.data ?? []).map((b) => ({
     ...b,
-    distanceMi: location
-      ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
-      : undefined,
+    distanceMi: location ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng }) : undefined,
   }));
 
   const categories = useMemo(() => {

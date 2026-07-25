@@ -1,12 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { 
-  ArrowLeft, 
-  Eye, 
-  EyeOff,
-  Shield, 
-  CheckCircle,
-  Loader2,
-} from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Shield, CheckCircle, Loader2 } from "lucide-react";
 import { useSettings } from "@/lib/settings";
 
 export const Route = createFileRoute("/settings/privacy")({
@@ -20,8 +13,8 @@ function PrivacyPage() {
     <>
       {/* Header */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-surface/90 px-4 py-3 backdrop-blur">
-        <Link 
-          to="/settings" 
+        <Link
+          to="/settings"
           className="grid size-9 place-items-center rounded-full bg-surface-muted"
         >
           <ArrowLeft className="size-4" />
@@ -51,9 +44,8 @@ function PrivacyPage() {
             <div>
               <p className="text-sm font-semibold">Your Privacy Matters</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Control how your information is used and displayed in QueueLess. 
-                These settings help protect your privacy while allowing you to 
-                participate in the community.
+                Control how your information is used and displayed in QueueLess. These settings help
+                protect your privacy while allowing you to participate in the community.
               </p>
             </div>
           </div>
@@ -104,9 +96,11 @@ function PrivacyPage() {
                     Allow others to see your activity and contributions
                   </p>
                 </div>
-                <span className={`text-xs font-medium ${
-                  settings.show_in_leaderboard ? "text-safe" : "text-muted-foreground"
-                }`}>
+                <span
+                  className={`text-xs font-medium ${
+                    settings.show_in_leaderboard ? "text-safe" : "text-muted-foreground"
+                  }`}
+                >
                   {settings.show_in_leaderboard ? "Enabled" : "Disabled"}
                 </span>
               </div>
@@ -122,7 +116,13 @@ function PrivacyPage() {
               {/* Analytics */}
               <div className="flex items-center gap-3 px-4 py-4">
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
-                  <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    className="size-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="M3 3v18h18" />
                     <path d="M18 9l-5 5-4-4-3 3" />
                   </svg>
@@ -156,11 +156,21 @@ function PrivacyPage() {
             </p>
             <div className="space-y-1 rounded-2xl border border-border bg-surface">
               <button
-                onClick={() => alert("Data export feature coming soon! Your data will be exported as a JSON file.")}
+                onClick={() =>
+                  alert(
+                    "Data export feature coming soon! Your data will be exported as a JSON file.",
+                  )
+                }
                 className="flex w-full items-center gap-3 px-4 py-4 text-left"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
-                  <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    className="size-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
                     <polyline points="7 10 12 15 17 10" />
                     <line x1="12" y1="15" x2="12" y2="3" />
@@ -176,11 +186,21 @@ function PrivacyPage() {
               </button>
 
               <button
-                onClick={() => alert("Your favorites and reports are stored locally on this device. To delete them, clear your browser data for this site.")}
+                onClick={() =>
+                  alert(
+                    "Your favorites and reports are stored locally on this device. To delete them, clear your browser data for this site.",
+                  )
+                }
                 className="flex w-full items-center gap-3 border-t border-border px-4 py-4 text-left"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
-                  <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    className="size-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <polyline points="3 6 5 6 21 6" />
                     <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
                   </svg>
@@ -207,7 +227,13 @@ function PrivacyPage() {
                 className="flex w-full items-center gap-3 px-4 py-4 text-left"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
-                  <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    className="size-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                     <line x1="16" y1="13" x2="8" y2="13" />
@@ -216,9 +242,7 @@ function PrivacyPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">Privacy Policy</p>
-                  <p className="text-xs text-muted-foreground">
-                    Read our privacy policy
-                  </p>
+                  <p className="text-xs text-muted-foreground">Read our privacy policy</p>
                 </div>
               </button>
 
@@ -227,16 +251,20 @@ function PrivacyPage() {
                 className="flex w-full items-center gap-3 border-t border-border px-4 py-4 text-left"
               >
                 <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-muted-foreground">
-                  <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    className="size-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                   </svg>
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">Terms of Service</p>
-                  <p className="text-xs text-muted-foreground">
-                    Read our terms of service
-                  </p>
+                  <p className="text-xs text-muted-foreground">Read our terms of service</p>
                 </div>
               </button>
             </div>

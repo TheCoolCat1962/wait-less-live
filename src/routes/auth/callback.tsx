@@ -18,7 +18,7 @@ function AuthCallbackPage() {
   useEffect(() => {
     async function handleAuthCallback() {
       console.log("[AuthCallback] Processing auth callback...");
-      
+
       // Get the URL search params
       const params = new URLSearchParams(window.location.search);
       const token = params.get("token");
@@ -28,23 +28,23 @@ function AuthCallbackPage() {
       const tokenHash = params.get("token_hash");
       const scopes = params.get("scopes");
       const next = params.get("next");
-      
-      console.log("[AuthCallback] URL params:", { 
-        hasToken: !!token, 
+
+      console.log("[AuthCallback] URL params:", {
+        hasToken: !!token,
         hasTokenHash: !!tokenHash,
-        type, 
-        error, 
+        type,
+        error,
         errorCode,
-        next 
+        next,
       });
 
       // Handle explicit errors from Supabase
       if (error) {
         console.log("[AuthCallback] Error in URL:", error, errorCode);
-        
+
         let userMessage = "Authentication error";
         let userDetails: string | null = null;
-        
+
         switch (error) {
           case "access_denied":
             userMessage = "Access denied";
@@ -65,7 +65,7 @@ function AuthCallbackPage() {
           default:
             userDetails = `Error: ${error}${errorCode ? ` (${errorCode})` : ""}`;
         }
-        
+
         setStatus("error");
         setMessage(userMessage);
         setDetails(userDetails);
@@ -76,14 +76,14 @@ function AuthCallbackPage() {
         // The getSession() call will automatically process the token from the URL
         // and set up the session if the token is valid
         const { data, error: sessionError } = await supabase.auth.getSession();
-        
-        console.log("[AuthCallback] getSession result:", { 
+
+        console.log("[AuthCallback] getSession result:", {
           hasSession: !!data.session,
           hasUser: !!data.user,
           userEmail: data.user?.email,
           emailConfirmed: !!data.user?.email_confirmed_at,
           lastSignInAt: data.user?.last_sign_in_at,
-          error: sessionError?.message 
+          error: sessionError?.message,
         });
 
         if (sessionError) {
@@ -97,7 +97,7 @@ function AuthCallbackPage() {
         // Check if user is now authenticated
         if (data.session && data.user) {
           console.log("[AuthCallback] Session established successfully");
-          
+
           // Check the type of callback
           if (type === "recovery") {
             console.log("[AuthCallback] Password recovery successful");
@@ -121,7 +121,7 @@ function AuthCallbackPage() {
             setMessage("Authenticated successfully!");
             setTimeout(() => {
               // Use next param if provided, otherwise go to profile
-              if (next && next.startsWith('/')) {
+              if (next && next.startsWith("/")) {
                 navigate({ to: next as any });
               } else {
                 navigate({ to: "/profile" });
@@ -134,7 +134,9 @@ function AuthCallbackPage() {
         // No session but no error - this might be a confirmation-only callback
         // where the user just confirmed their email but isn't logged in yet
         if (type === "signup" || type === "email_change" || type === "confirmation") {
-          console.log("[AuthCallback] Email confirmed but no session created (expected for confirmation-only flow)");
+          console.log(
+            "[AuthCallback] Email confirmed but no session created (expected for confirmation-only flow)",
+          );
           setStatus("email_confirmed");
           setMessage("Email verified successfully!");
           setDetails("Your email has been confirmed. You can now sign in with your credentials.");
@@ -149,7 +151,6 @@ function AuthCallbackPage() {
         setStatus("error");
         setMessage("Unable to establish session");
         setDetails("Please try signing in again or request a new verification email.");
-        
       } catch (err) {
         console.error("[AuthCallback] Unexpected error:", err);
         setStatus("error");

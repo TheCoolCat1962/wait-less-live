@@ -112,9 +112,7 @@ function BusinessPage() {
             <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
               {business.category}
             </p>
-            <h1 className="truncate text-2xl font-black tracking-tight">
-              {business.name}
-            </h1>
+            <h1 className="truncate text-2xl font-black tracking-tight">{business.name}</h1>
           </div>
         </div>
 
@@ -194,10 +192,7 @@ function BusinessPage() {
           ) : (
             <div className="space-y-2">
               {business.reports.map((r: Report) => (
-                <div
-                  key={r.id}
-                  className="rounded-2xl border border-border bg-surface p-3"
-                >
+                <div key={r.id} className="rounded-2xl border border-border bg-surface p-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="grid size-9 place-items-center rounded-full bg-surface-muted text-[10px] font-bold uppercase text-muted-foreground">

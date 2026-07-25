@@ -109,7 +109,9 @@ export const geocodeQuery = createServerFn({ method: "POST" })
       }>;
     };
     if (json.status !== "OK" || !json.results.length) {
-      throw new Error("We couldn't find that location. Try a New Orleans ZIP code, neighborhood, or address.");
+      throw new Error(
+        "We couldn't find that location. Try a New Orleans ZIP code, neighborhood, or address.",
+      );
     }
     // Prefer a result inside the NOLA bounding box when available.
     const inMetro = json.results.find((r) =>
@@ -124,7 +126,6 @@ export const geocodeQuery = createServerFn({ method: "POST" })
     };
   });
 
-
 // ---------------------------------------------------------------------------
 // Business type filtering — inclusive by default
 // ---------------------------------------------------------------------------
@@ -133,7 +134,6 @@ export const geocodeQuery = createServerFn({ method: "POST" })
 // customers never wait in line (private residences, industrial sites,
 // contractors, warehouses, utility infrastructure, vacant land, etc.).
 // EXCLUDED_TYPES_SET removed to allow all legitimate business types.
-
 
 // Category label + emoji for a given Place. Prefers primary_type.
 const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
@@ -251,13 +251,14 @@ const CATEGORY_MAP: Record<string, { label: string; emoji: string }> = {
 };
 
 function pickCategory(primaryType: string | undefined, types: string[] | undefined) {
-  if (primaryType && CATEGORY_MAP[primaryType]) return { primary: primaryType, ...CATEGORY_MAP[primaryType] };
+  if (primaryType && CATEGORY_MAP[primaryType])
+    return { primary: primaryType, ...CATEGORY_MAP[primaryType] };
   if (types) {
     for (const t of types) {
       if (CATEGORY_MAP[t]) return { primary: t, ...CATEGORY_MAP[t] };
     }
   }
-  return { primary: primaryType ?? (types?.[0] ?? "place"), label: "Place", emoji: "📍" };
+  return { primary: primaryType ?? types?.[0] ?? "place", label: "Place", emoji: "📍" };
 }
 
 // isExcluded function removed.
@@ -287,7 +288,13 @@ type StoredReport = { minutes: number; created_at: string; source: string | null
 
 // Weighted current wait: newer + timer reports weigh more; ignore obvious outliers.
 function aggregateReports(reports: StoredReport[]) {
-  if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, trend: "stable" as "up" | "down" | "stable" };
+  if (!reports.length)
+    return {
+      current: null as number | null,
+      count: 0,
+      latest: null as string | null,
+      trend: "stable" as "up" | "down" | "stable",
+    };
 
   const now = Date.now();
   // Only reports within the last 90 minutes count as "current".
@@ -377,9 +384,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         photos?: Array<{ name: string }>;
       }>;
     };
-    const places = (json.places ?? []).filter(
-      (p) => p.id && p.location && p.displayName?.text,
-    );
+    const places = (json.places ?? []).filter((p) => p.id && p.location && p.displayName?.text);
 
     const rows = places.map((p) => {
       const comps = (p.addressComponents ?? []).map((c) => ({
@@ -418,7 +423,9 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     const placeIds = rows.map((r) => r.google_place_id);
     const { data: storedRaw, error: readErr } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .in("google_place_id", placeIds.length ? placeIds : ["__none__"]);
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
@@ -431,7 +438,10 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
       .order("created_at", { ascending: false });
     const reports = (reportsRaw ?? []) as Array<{
-      business_id: string; minutes: number; created_at: string; source: string | null;
+      business_id: string;
+      minutes: number;
+      created_at: string;
+      source: string | null;
     }>;
 
     const byBiz = new Map<string, StoredReport[]>();
@@ -443,11 +453,21 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
 
     const results = stored.map((b) => {
       const agg = aggregateReports(byBiz.get(b.id) ?? []);
-      const score = scoreSearchResult(b.name, data.query, data.lat, data.lng, b.lat, b.lng, agg.count);
+      const score = scoreSearchResult(
+        b.name,
+        data.query,
+        data.lat,
+        data.lng,
+        b.lat,
+        b.lng,
+        agg.count,
+      );
       return {
         ...b,
         currentMinutes: agg.current,
-        updatedMinutesAgo: agg.latest ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000) : null,
+        updatedMinutesAgo: agg.latest
+          ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+          : null,
         contributors: agg.count,
         trend: agg.trend,
         _score: score,
@@ -470,7 +490,9 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: businessRaw, error } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -484,8 +506,12 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(30);
     const reports = (reportsRaw ?? []) as Array<{
-      id: string; minutes: number; created_at: string; reporter_key: string | null;
-      source: string | null; comment: string | null;
+      id: string;
+      minutes: number;
+      created_at: string;
+      reporter_key: string | null;
+      source: string | null;
+      comment: string | null;
     }>;
 
     const agg = aggregateReports(
@@ -515,24 +541,25 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
 // Submit a wait-time report
 // ---------------------------------------------------------------------------
 export const submitWaitReport = createServerFn({ method: "POST" })
-  .inputValidator((data: {
-    businessId: string;
-    minutes: number;
-    reporterKey: string;
-    source?: "quick" | "exact" | "timer";
-    comment?: string;
-  }) => {
-    const id = String(data?.businessId ?? "");
-    const m = Number(data?.minutes);
-    const key = String(data?.reporterKey ?? "").slice(0, 64);
-    const source = data?.source && ["quick", "exact", "timer"].includes(data.source)
-      ? data.source
-      : "quick";
-    const comment = data?.comment ? String(data.comment).trim().slice(0, 200) : null;
-    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid business id");
-    if (!Number.isFinite(m) || m < 0 || m > 240) throw new Error("Invalid wait time");
-    return { businessId: id, minutes: Math.round(m), reporterKey: key, source, comment };
-  })
+  .inputValidator(
+    (data: {
+      businessId: string;
+      minutes: number;
+      reporterKey: string;
+      source?: "quick" | "exact" | "timer";
+      comment?: string;
+    }) => {
+      const id = String(data?.businessId ?? "");
+      const m = Number(data?.minutes);
+      const key = String(data?.reporterKey ?? "").slice(0, 64);
+      const source =
+        data?.source && ["quick", "exact", "timer"].includes(data.source) ? data.source : "quick";
+      const comment = data?.comment ? String(data.comment).trim().slice(0, 200) : null;
+      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid business id");
+      if (!Number.isFinite(m) || m < 0 || m > 240) throw new Error("Invalid wait time");
+      return { businessId: id, minutes: Math.round(m), reporterKey: key, source, comment };
+    },
+  )
   .handler(async ({ data }) => {
     const supabase = getSupabase();
     const { error } = await supabase.from("wait_reports").insert({
@@ -559,7 +586,9 @@ export const getBusinessesByIds = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: rows, error } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .in("id", data.ids);
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -702,7 +731,9 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     const placeIds = rows.map((r) => r.google_place_id);
     const { data: storedRaw, error: readErr } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .select(
+        "id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url",
+      )
       .in("google_place_id", placeIds.length ? placeIds : ["__none__"]);
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
@@ -733,11 +764,21 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
 
     const results = stored.map((b) => {
       const agg = aggregateReports(byBiz.get(b.id) ?? []);
-      const score = scoreSearchResult(b.name, data.query, data.lat, data.lng, b.lat, b.lng, agg.count);
+      const score = scoreSearchResult(
+        b.name,
+        data.query,
+        data.lat,
+        data.lng,
+        b.lat,
+        b.lng,
+        agg.count,
+      );
       return {
         ...b,
         currentMinutes: agg.current,
-        updatedMinutesAgo: agg.latest ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000) : null,
+        updatedMinutesAgo: agg.latest
+          ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+          : null,
         contributors: agg.count,
         trend: agg.trend,
         _score: score,
@@ -746,4 +787,3 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     results.sort((a, b) => b._score - a._score);
     return results.map(({ _score, ...rest }) => rest);
   });
-

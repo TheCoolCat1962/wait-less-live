@@ -38,9 +38,7 @@ function HomePage() {
   // that order rather than re-sorting by distance.
   const sorted: BusinessWithWait[] = (nearbyQuery.data ?? []).map((b) => ({
     ...b,
-    distanceMi: location
-      ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
-      : undefined,
+    distanceMi: location ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng }) : undefined,
   }));
 
   const quick = sorted
@@ -55,9 +53,7 @@ function HomePage() {
       <header className="sticky top-0 z-20 border-b border-border bg-surface/90 px-5 pb-4 pt-6 backdrop-blur">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-xl font-black uppercase tracking-tight text-brand">
-              QueueLess
-            </h1>
+            <h1 className="text-xl font-black uppercase tracking-tight text-brand">QueueLess</h1>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Now live · New Orleans metro
             </p>
@@ -89,8 +85,8 @@ function HomePage() {
           </div>
           <h2 className="mb-2 text-lg font-extrabold">Not in your area yet</h2>
           <p className="mx-auto max-w-xs text-sm text-muted-foreground">
-            QueueLess is currently available only in the New Orleans metro area.
-            We're expanding soon — check back for live wait times near you.
+            QueueLess is currently available only in the New Orleans metro area. We're expanding
+            soon — check back for live wait times near you.
           </p>
         </main>
       ) : location ? (
@@ -122,9 +118,7 @@ function HomePage() {
                     href={`/business/${b.id}`}
                     className="min-w-[62%] snap-start rounded-2xl border border-safe/25 bg-safe/5 p-4"
                   >
-                    <div className="mb-2 truncate font-bold text-foreground">
-                      {b.name}
-                    </div>
+                    <div className="mb-2 truncate font-bold text-foreground">{b.name}</div>
                     <p className="text-[11px] uppercase tracking-wider text-safe">
                       {b.currentMinutes} min · {b.distanceMi?.toFixed(1)} mi
                     </p>
