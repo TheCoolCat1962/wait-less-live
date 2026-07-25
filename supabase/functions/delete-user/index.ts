@@ -52,26 +52,21 @@ serve(async (req) => {
     const userId = user.id;
     console.log(`[delete-user] Deleting account for user: ${userId}`);
 
-    // Delete user's wait reports
+    // Delete user's wait reports using the correct column (reporter_key)
     const { error: reportsError } = await supabaseAdmin
       .from("wait_reports")
       .delete()
-      .eq("user_id", userId);
+      .eq("reporter_key", userId);
     
     if (reportsError) {
       console.error("[delete-user] Error deleting wait reports:", reportsError);
+      return new Response(
+        JSON.stringify({ error: "Failed to delete user reports", details: reportsError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Delete user's favorites (stored in user_settings or separate table if exists)
-    // For now, we'll just log - adjust based on your schema
-    const { error: settingsError } = await supabaseAdmin
-      .from("user_settings")
-      .delete()
-      .eq("user_id", userId);
-    
-    if (settingsError) {
-      console.error("[delete-user] Error deleting user settings:", settingsError);
-    }
+    console.log(`[delete-user] Deleted wait reports for user: ${userId}`);
 
     // Delete the user from auth.users using admin API
     // Note: This requires the service_role key which has admin privileges
