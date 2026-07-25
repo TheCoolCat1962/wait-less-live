@@ -1,8 +1,9 @@
+import { memo, useCallback } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Home, Search, Star, User, Plus } from "lucide-react";
 import { useReportSheet } from "./ReportSheetContext";
 
-function NavItem({
+const NavItem = memo(function NavItem({
   to,
   icon: Icon,
   label,
@@ -24,11 +25,16 @@ function NavItem({
       </span>
     </Link>
   );
-}
+});
 
-export function BottomNav() {
+export const BottomNav = memo(function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { open } = useReportSheet();
+  
+  const handleOpenReportSheet = useCallback(() => {
+    open();
+  }, [open]);
+  
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-[430px] items-center justify-between border-t border-border bg-surface/95 px-6 pb-6 pt-3 backdrop-blur">
       <NavItem to="/" icon={Home} label="Home" active={pathname === "/"} />
@@ -40,7 +46,7 @@ export function BottomNav() {
       />
       <button
         type="button"
-        onClick={() => open()}
+        onClick={handleOpenReportSheet}
         aria-label="Report wait time"
         className="-mt-10 grid size-14 place-items-center rounded-2xl border-4 border-background bg-brand text-brand-foreground shadow-lg shadow-brand/40 transition-transform active:scale-95"
       >
@@ -60,4 +66,4 @@ export function BottomNav() {
       />
     </nav>
   );
-}
+});

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo, useCallback } from "react";
 import { MapPin, Sparkles, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
@@ -17,12 +18,11 @@ function HomePage() {
 
   // NOLA metro bounds (kept in sync with server). Only the launch region is
   // supported, so we don't query for out-of-region locations.
-  const inNola = location
-    ? location.coords.lat >= 29.82 &&
-      location.coords.lat <= 30.15 &&
-      location.coords.lng >= -90.35 &&
-      location.coords.lng <= -89.55
-    : true;
+  const inNola = useMemo(() => {
+    if (!location) return true;
+    const { lat, lng } = location.coords;
+    return lat >= 29.82 && lat <= 30.15 && lng >= -90.35 && lng <= -89.55;
+  }, [location?.coords.lat, location?.coords.lng]);
 
   const nearbyQuery = useQuery({
     queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
@@ -34,21 +34,29 @@ function HomePage() {
     staleTime: 60_000,
   });
 
-  // Server returns businesses already prioritized by wait likelihood; keep
-  // that order rather than re-sorting by distance.
-  const sorted: BusinessWithWait[] = (nearbyQuery.data ?? []).map((b) => ({
-    ...b,
-    distanceMi: location
-      ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
-      : undefined,
-  }));
+  // Memoize sorted businesses to avoid recalculating on every render
+  const sorted = useMemo<BusinessWithWait[]>(() => {
+    return (nearbyQuery.data ?? []).map((b) => ({
+      ...b,
+      distanceMi: location
+        ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
+        : undefined,
+    }));
+  }, [nearbyQuery.data, location?.coords.lat, location?.coords.lng]);
 
-  const quick = sorted
-    .filter((b) => b.currentMinutes != null && b.currentMinutes <= 10)
-    .slice(0, 3);
+  // Memoize quick businesses (no wait)
+  const quick = useMemo(() => {
+    return sorted
+      .filter((b) => b.currentMinutes != null && b.currentMinutes <= 10)
+      .slice(0, 3);
+  }, [sorted]);
 
   const showPrompt =
     status === "idle" || status === "error" || (status === "prompting" && !location);
+    
+  const handleClearLocation = useCallback(() => {
+    clear();
+  }, [clear]);
 
   return (
     <AppShell>
@@ -73,7 +81,7 @@ function HomePage() {
           </span>
           {location && (
             <button
-              onClick={clear}
+              onClick={handleClearLocation}
               className="ml-auto text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
             >
               Change
