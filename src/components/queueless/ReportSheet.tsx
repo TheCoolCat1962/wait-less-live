@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Check, Loader2, Play, Square, Timer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReportSheet } from "./ReportSheetContext";
-import { WAIT_OPTIONS, type WaitLevel, type ReportSource, getReporterKey } from "@/lib/queueless-data";
+import { WAIT_OPTIONS, type WaitLevel, type ReportSource } from "@/lib/queueless-data";
 import { fetchNearbyBusinesses, submitWaitReport } from "@/lib/queueless.functions";
 import { useLocation } from "@/lib/location";
+import { useReputation } from "@/lib/reputation";
+import { useAuth } from "@/lib/auth";
 
 const toneRing: Record<string, string> = {
   safe: "border-safe/60 bg-safe/10 text-safe",
@@ -18,6 +20,8 @@ type Mode = "quick" | "exact" | "timer";
 export function ReportSheet() {
   const { isOpen, businessId, close } = useReportSheet();
   const { location } = useLocation();
+  const { user } = useAuth();
+  const { reporterKey } = useReputation();
   const qc = useQueryClient();
 
   const [mode, setMode] = useState<Mode>("quick");
@@ -100,7 +104,7 @@ export function ReportSheet() {
         data: {
           businessId: activeBizId,
           minutes,
-          reporterKey: getReporterKey(),
+          reporterKey: reporterKey || undefined,
           source,
           comment: comment.trim() || undefined,
         },
@@ -108,6 +112,8 @@ export function ReportSheet() {
       setSubmitted(true);
       qc.invalidateQueries({ queryKey: ["nearby"] });
       qc.invalidateQueries({ queryKey: ["business", activeBizId] });
+      // Invalidate reputation queries so stats update
+      qc.invalidateQueries({ queryKey: ["user-reports"] });
       setTimeout(() => close(), 1200);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't submit report.");

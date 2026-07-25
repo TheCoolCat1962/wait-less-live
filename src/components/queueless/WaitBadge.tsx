@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { toneFromMinutes } from "@/lib/queueless-data";
 
 interface Props {
@@ -17,7 +18,7 @@ const dotClasses: Record<string, string> = {
   danger: "bg-danger",
 };
 
-export function WaitBadge({ minutes, size = "sm" }: Props) {
+export const WaitBadge = memo(function WaitBadge({ minutes, size = "sm" }: Props) {
   const tone = toneFromMinutes(minutes);
   const sizing =
     size === "lg"
@@ -33,4 +34,4 @@ export function WaitBadge({ minutes, size = "sm" }: Props) {
       {minutes} min wait
     </span>
   );
-}
+});

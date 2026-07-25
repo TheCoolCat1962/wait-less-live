@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { type Business, emojiForBusiness, photoUrlForWidth, gradientForBusiness } from "@/lib/queueless-data";
 
@@ -11,7 +11,7 @@ const RETRY_DELAY_MS = 1000;
 // owns the size/aspect ratio and rounding). Falls back to a clean, category-
 // specific placeholder when there is no photo or the image fails to load — 
 // never a blank area or broken-image icon. Lazy-loaded by default for smooth scrolling.
-export function BusinessImage({
+export const BusinessImage = memo(function BusinessImage({
   business,
   width,
   className,
@@ -28,42 +28,44 @@ export function BusinessImage({
   const [loadState, setLoadState] = useState<"idle" | "loading" | "success" | "failed">("idle");
   const [currentSrc, setCurrentSrc] = useState(src);
   const retryCount = useRef(0);
+  
+  // Track if src changed to reset state
+  const prevSrcRef = useRef(src);
 
   // Get category-specific gradient for placeholder
   const gradient = gradientForBusiness(business);
 
   // Reset state when source changes
   useEffect(() => {
-    if (src !== currentSrc) {
+    if (src !== prevSrcRef.current) {
+      prevSrcRef.current = src;
       setCurrentSrc(src);
       setLoadState(src ? "idle" : "failed");
       retryCount.current = 0;
     }
-  }, [src, currentSrc]);
+  }, [src]);
 
-  const handleError = () => {
+  const handleError = useCallback(() => {
     if (retryCount.current < MAX_RETRIES) {
       retryCount.current++;
       console.log(`[BusinessImage] Retrying photo load (attempt ${retryCount.current + 1}/${MAX_RETRIES + 1})`);
       setLoadState("loading");
       // Force reload by adding cache-busting query param
-      const newSrc = `${currentSrc}${currentSrc.includes('?') ? '&' : '?'}retry=${Date.now()}`;
+      const retrySrc = `${currentSrc}${currentSrc.includes('?') ? '&' : '?'}retry=${Date.now()}`;
       setTimeout(() => {
-        setCurrentSrc(newSrc);
+        setCurrentSrc(retrySrc);
       }, RETRY_DELAY_MS * retryCount.current);
     } else {
       console.log(`[BusinessImage] Photo failed after ${MAX_RETRIES + 1} attempts, showing placeholder`);
       setLoadState("failed");
     }
-  };
+  }, [currentSrc]);
 
-  const handleLoad = () => {
-    if (loadState !== "success") {
-      setLoadState("success");
-    }
-  };
+  const handleLoad = useCallback(() => {
+    setLoadState("success");
+  }, []);
 
-  // Start loading when src is set
+  // Start loading when src is set and idle
   useEffect(() => {
     if (src && loadState === "idle") {
       setLoadState("loading");
@@ -87,8 +89,8 @@ export function BusinessImage({
 
   return (
     <img
-      key={currentSrc ?? "img"}
-      src={currentSrc ?? ""}
+      key={currentSrc}
+      src={currentSrc}
       alt=""
       loading={eager ? "eager" : "lazy"}
       decoding="async"
@@ -97,4 +99,4 @@ export function BusinessImage({
       className={cn("size-full object-cover", className)}
     />
   );
-}
+});

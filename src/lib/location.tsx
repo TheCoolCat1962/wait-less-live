@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { geocodeQuery } from "./queueless.functions";
@@ -58,6 +59,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState<UserLocation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettings();
+  
+  // Use ref to access current settings without recreating callbacks
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   useEffect(() => {
     const stored = readStored();
@@ -78,7 +83,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     setStatus("prompting");
     setError(null);
     
-    const highAccuracy = settings.location_accuracy;
+    // Read from ref to avoid recreating callback on settings change
+    const highAccuracy = settingsRef.current.location_accuracy;
     console.log("[Location] Requesting geolocation, high accuracy:", highAccuracy);
     
     navigator.geolocation.getCurrentPosition(
@@ -106,7 +112,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         maximumAge: highAccuracy ? 120000 : 300000 
       },
     );
-  }, [settings.location_accuracy]);
+  }, []); // No dependencies - reads from ref
 
   const setManualLocation = useCallback(async (query: string) => {
     setStatus("prompting");
