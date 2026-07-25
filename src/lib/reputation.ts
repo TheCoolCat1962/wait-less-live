@@ -188,42 +188,54 @@ function getRankAndProgress(points: number): { rank: string; nextRank: string; p
 function calculateStreak(reportDates: Date[]): { current: number; longest: number } {
   if (reportDates.length === 0) return { current: 0, longest: 0 };
   
-  // Sort dates descending (most recent first)
-  const sorted = [...reportDates].sort((a, b) => b.getTime() - a.getTime());
+  // Sort dates ascending (oldest first)
+  const sorted = [...reportDates].sort((a, b) => a.getTime() - b.getTime());
   
-  // Get unique days
+  // Get unique days in ascending order
   const uniqueDays = new Set<string>();
   sorted.forEach(d => {
     uniqueDays.add(d.toISOString().split('T')[0]);
   });
   
-  const days = Array.from(uniqueDays).sort().reverse();
+  const days = Array.from(uniqueDays).sort(); // ascending order
   if (days.length === 0) return { current: 0, longest: 0 };
   
   // Check if today or yesterday has a report (for current streak)
   const today = new Date().toISOString().split('T')[0];
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-  const hasRecent = days[0] === today || days[0] === yesterday;
+  const hasRecent = days[days.length - 1] === today || days[days.length - 1] === yesterday;
   
-  let currentStreak = hasRecent ? 1 : 0;
-  let longestStreak = 1;
+  let currentStreak = 0;
+  let longestStreak = 0;
   let streak = 1;
+  let inCurrentSegment = hasRecent; // Track if we're in the current contiguous segment
   
   for (let i = 1; i < days.length; i++) {
     const prev = new Date(days[i - 1]);
     const curr = new Date(days[i]);
-    const diff = (prev.getTime() - curr.getTime()) / 86400000;
+    const diff = (curr.getTime() - prev.getTime()) / 86400000;
     
     if (diff === 1) {
+      // Consecutive day
       streak++;
-      if (currentStreak > 0) currentStreak++;
+      if (inCurrentSegment) {
+        currentStreak++;
+      }
     } else {
+      // Gap found - update longest and reset
       longestStreak = Math.max(longestStreak, streak);
       streak = 1;
+      inCurrentSegment = false; // Stop tracking current streak after first gap
     }
   }
   
+  // Final update for last streak
   longestStreak = Math.max(longestStreak, streak);
+  
+  // If we never had a gap after starting, currentStreak equals the last streak
+  if (inCurrentSegment && currentStreak === 0 && streak > 0) {
+    currentStreak = streak;
+  }
   
   return { current: currentStreak, longest: longestStreak };
 }
