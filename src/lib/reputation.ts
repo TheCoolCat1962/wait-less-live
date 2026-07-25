@@ -350,13 +350,18 @@ export function getBadgeStatus(
   badge: BadgeDefinition,
   stats: UserReputationStats
 ): { earned: boolean; progress: number; earnedAt?: string } {
-  const earned = stats.earnedBadges.some(b => b.id === badge.id);
-  const earnedBadge = stats.earnedBadges.find(b => b.id === badge.id);
+  // Check both persisted earned badges AND computed requirement
+  const persistedEarned = stats.earnedBadges.some(b => b.id === badge.id);
   const requirement = badge.requirement(stats);
+  const computedEarned = requirement.earned;
+  
+  // Badge is earned if either persisted or computed from current stats
+  const earned = persistedEarned || computedEarned;
+  const earnedBadge = stats.earnedBadges.find(b => b.id === badge.id);
   
   return {
     earned,
     progress: earned ? 100 : requirement.progress || 0,
-    earnedAt: earnedBadge?.earnedAt,
+    earnedAt: earnedBadge?.earnedAt, // Only available if persisted
   };
 }
