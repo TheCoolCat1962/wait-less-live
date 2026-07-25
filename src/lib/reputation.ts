@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { useAuth } from "./auth";
 import { getReporterKey } from "./queueless-data";
+import { supabase } from "@/integrations/supabase/client";
 
 // Reporter key storage
 const REPORTER_KEY_STORAGE = "queueless.reporter.v1";
@@ -277,12 +277,6 @@ export async function fetchUserReports(reporterKey: string | null): Promise<Repo
   if (!reporterKey) return [];
   
   try {
-    const supabase = createClient(
-      import.meta.env.VITE_SUPABASE_URL || "",
-      import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
-      { auth: { persistSession: false } }
-    );
-    
     const { data, error } = await supabase
       .from("wait_reports")
       .select("*")
