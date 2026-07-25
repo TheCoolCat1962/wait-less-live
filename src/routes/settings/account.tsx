@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { 
   ArrowLeft, 
@@ -29,8 +29,30 @@ function getSupabaseAuth() {
   return createClient(url, key);
 }
 
+// Call the delete-user Edge Function
+async function deleteUserAccount(accessToken: string): Promise<{ success: boolean; error?: string }> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({}),
+  });
+
+  const data = await response.json();
+  
+  if (!response.ok) {
+    return { success: false, error: data.error || "Failed to delete account" };
+  }
+  
+  return { success: true };
+}
+
 function AccountPage() {
-  const { user, refreshSession } = useAuth();
+  const navigate = useNavigate();
+  const { user, refreshSession, signOut } = useAuth();
   const [activeSection, setActiveSection] = useState<"display" | "email" | "password" | "delete" | null>(null);
   
   // Display name state
@@ -60,6 +82,7 @@ function AccountPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
 
   // Initialize display name from user metadata
   useEffect(() => {
@@ -214,20 +237,36 @@ function AccountPage() {
     try {
       const supabase = getSupabaseAuth();
       
-      // Sign out and show message that deletion needs manual support
-      // Note: Supabase Auth doesn't support programmatic account deletion from the client
-      // Users need to contact support or use the admin dashboard
-      await supabase.auth.signOut();
+      // Get current session to get access token for the Edge Function
+      const { data: { session } } = await supabase.auth.getSession();
       
-      alert(
-        "Account Deletion Request Submitted\n\n" +
-        "Your account deletion request has been noted. " +
-        "Please contact support@queueless.app to complete the account deletion process.\n\n" +
-        "You will be signed out now."
-      );
+      if (!session?.access_token) {
+        setDeleteError("You must be signed in to delete your account");
+        setDeleteLoading(false);
+        return;
+      }
       
-      // Navigate to home after signing out
-      window.location.href = "/";
+      // Call the Edge Function to delete the account
+      const result = await deleteUserAccount(session.access_token);
+      
+      if (!result.success) {
+        setDeleteError(result.error || "Failed to delete account");
+        setDeleteLoading(false);
+        return;
+      }
+      
+      // Account deleted successfully - show success state
+      setDeleteSuccess(true);
+      setDeleteLoading(false);
+      
+      // Sign out locally
+      await signOut();
+      
+      // Navigate to home after a brief delay to show success message
+      setTimeout(() => {
+        navigate({ to: "/" });
+      }, 2000);
+      
     } catch (err: any) {
       setDeleteError(err.message || "Failed to process deletion request");
       setDeleteLoading(false);
@@ -528,6 +567,7 @@ function AccountPage() {
               onClick={() => {
                 setActiveSection(activeSection === "delete" ? null : "delete");
                 setDeleteStep("initial");
+                setDeleteSuccess(false);
               }}
               className="flex w-full items-center gap-3 px-4 py-4 text-left"
             >
@@ -542,7 +582,22 @@ function AccountPage() {
             
             {activeSection === "delete" && (
               <div className="border-t border-danger/20 p-4">
-                {deleteStep === "initial" ? (
+                {deleteSuccess ? (
+                  /* Success State */
+                  <div className="flex flex-col items-center py-4 text-center">
+                    <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-safe/10">
+                      <CheckCircle className="size-8 text-safe" />
+                    </div>
+                    <p className="mb-2 text-lg font-bold text-safe">Account Deleted</p>
+                    <p className="text-sm text-muted-foreground">
+                      Your account and all associated data have been permanently deleted. You will be redirected shortly.
+                    </p>
+                    <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />
+                      Redirecting...
+                    </div>
+                  </div>
+                ) : deleteStep === "initial" ? (
                   <>
                     {/* Warning message */}
                     <div className="rounded-xl border border-danger/20 bg-background p-4">
@@ -637,7 +692,7 @@ function AccountPage() {
                         {deleteLoading ? (
                           <>
                             <Loader2 className="mr-2 inline size-4 animate-spin" />
-                            Processing...
+                            Deleting...
                           </>
                         ) : (
                           "Delete My Account"
