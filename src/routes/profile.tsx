@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Award, Bell, ChevronRight, LogIn, Settings, Star, Loader2, LogOut } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { useAuth } from "@/lib/auth";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useReputation, fetchUserReports, calculateReputationStats } from "@/lib/reputation";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -53,13 +54,16 @@ function Row({
 }
 
 function ProfilePage() {
-  const { user, loading, signOut, refreshSession } = useAuth();
+  const { user, loading: authLoading, signOut, refreshSession } = useAuth();
+  const { reporterKey } = useReputation();
   const [signingOut, setSigningOut] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [reports, setReports] = useState<any[]>([]);
+  const [loadingReports, setLoadingReports] = useState(true);
 
   // Wait for auth to be initialized before showing content
   useEffect(() => {
-    if (!loading) {
+    if (!authLoading) {
       setIsInitialized(true);
       console.log("[Profile] Auth initialized:", {
         hasUser: !!user,
@@ -67,12 +71,27 @@ function ProfilePage() {
         emailConfirmed: !!user?.email_confirmed_at,
       });
     }
-  }, [loading, user]);
+  }, [authLoading, user]);
 
   // Refresh session on mount to ensure we have latest auth state
   useEffect(() => {
     refreshSession();
   }, [refreshSession]);
+
+  // Fetch reports for stats
+  useEffect(() => {
+    if (!authLoading && reporterKey !== undefined) {
+      setLoadingReports(true);
+      fetchUserReports(reporterKey)
+        .then(setReports)
+        .finally(() => setLoadingReports(false));
+    }
+  }, [authLoading, reporterKey]);
+
+  // Calculate stats
+  const stats = useMemo(() => {
+    return calculateReputationStats(reports);
+  }, [reports]);
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -93,7 +112,6 @@ function ProfilePage() {
   const getUserDisplayName = () => {
     if (!user) return "Guest reporter";
     const email = user.email || "";
-    // Get name before @ or just show email
     const name = email.split("@")[0];
     return name.charAt(0).toUpperCase() + name.slice(1);
   };
@@ -131,19 +149,33 @@ function ProfilePage() {
 
         <div className="mt-5 grid grid-cols-3 gap-2 rounded-2xl border border-border bg-surface p-3 text-center">
           <div>
-            <p className="text-lg font-black">0</p>
+            {loadingReports ? (
+              <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+            ) : (
+              <p className="text-lg font-black">{stats.totalReports}</p>
+            )}
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Reports
             </p>
           </div>
           <div className="border-x border-border">
-            <p className="text-lg font-black">50</p>
+            {loadingReports ? (
+              <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+            ) : (
+              <p className="text-lg font-black">{stats.points}</p>
+            )}
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Rep score
+              Points
             </p>
           </div>
           <div>
-            <p className="text-lg font-black">—</p>
+            {loadingReports ? (
+              <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+            ) : (
+              <p className="text-lg font-black">
+                {stats.currentStreak > 0 ? stats.currentStreak : "—"}
+              </p>
+            )}
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Streak
             </p>
