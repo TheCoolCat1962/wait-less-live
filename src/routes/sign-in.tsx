@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { getAuthErrorMessage, isEmailConfirmationError } from "@/lib/auth-utils";
@@ -21,6 +21,7 @@ export const Route = createFileRoute("/sign-in")({
 
 function SignInPage() {
   const navigate = useNavigate();
+  const searchParams = useSearch({ from: "/sign-in" }) as { verified?: boolean };
   const { user, signIn, signUp, loading: authLoading, isAuthenticated } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
@@ -29,6 +30,15 @@ function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Check for verified param from email confirmation redirect
+  useEffect(() => {
+    if (searchParams.verified) {
+      setSuccessMessage("Your email has been verified! Please sign in with your credentials.");
+      // Clear the URL param
+      window.history.replaceState({}, '', '/sign-in');
+    }
+  }, [searchParams.verified]);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -60,11 +70,15 @@ function SignInPage() {
         
         // Sign up successful - show confirmation message
         setSuccessMessage(
-          "Account created! Check your email and click the verification link to activate your account."
+          "Account created! Check your email and click the verification link to activate your account. (Check your spam folder too)"
         );
         // Clear form
         setEmail("");
         setPassword("");
+        // Switch to sign-in mode after a moment
+        setTimeout(() => {
+          setIsSignUp(false);
+        }, 3000);
       } else {
         console.log("[SignIn] Attempting sign in with:", email);
         const { error } = await signIn(email, password);
