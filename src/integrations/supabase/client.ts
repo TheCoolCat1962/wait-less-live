@@ -26,6 +26,21 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
   };
 }
 
+function getAppUrl(): string {
+  // Check for explicitly configured URL first (for production)
+  const configuredUrl = import.meta.env.VITE_APP_URL;
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/$/, '');
+  }
+  
+  // Fall back to current window origin
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  
+  return '';
+}
+
 
 function createSupabaseClient() {
   // Use import.meta.env for client-side (Vite build-time replacement)
@@ -43,6 +58,8 @@ function createSupabaseClient() {
     throw new Error(message);
   }
 
+  const APP_URL = getAppUrl();
+
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     global: {
       fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
@@ -51,6 +68,10 @@ function createSupabaseClient() {
       storage: typeof window !== 'undefined' ? localStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
+      // Site URL is required for email verification redirects
+      siteUrl: APP_URL || undefined,
+      // Set a default redirect target for email actions
+      redirects: true,
     }
   });
 }
