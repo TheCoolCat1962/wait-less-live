@@ -118,15 +118,26 @@ function AuthCallbackPage() {
       }
 
       try {
-        // For email confirmation, Supabase uses token_hash in the URL
-        // The SDK's getSession() should automatically handle this
-        const { data, error: sessionError } = await supabase.auth.getSession();
+        // Extract verification tokens from URL
+        const token = params.get("token");
+        const tokenHash = params.get("token_hash");
+        const code = params.get("code");
+        
+        console.log("[AuthCallback] Checking for verification tokens:", {
+          hasToken: !!token,
+          hasTokenHash: !!tokenHash,
+          hasCode: !!code,
+          type
+        });
+
+        // First, try to get existing session
+        const { data: existingSession, error: sessionError } = await supabase.auth.getSession();
         
         console.log("[AuthCallback] getSession result:", { 
-          hasSession: !!data.session,
-          hasUser: !!data.user,
-          userEmail: data.user?.email,
-          emailConfirmed: !!data.user?.email_confirmed_at,
+          hasSession: !!existingSession.session,
+          hasUser: !!existingSession.user,
+          userEmail: existingSession.user?.email,
+          emailConfirmed: !!existingSession.user?.email_confirmed_at,
           error: sessionError?.message 
         });
 
@@ -139,25 +150,22 @@ function AuthCallbackPage() {
           return;
         }
 
-        // Check if user is now authenticated with a valid session
-        if (data.session && data.user) {
-          console.log("[AuthCallback] Session established successfully");
+        // Check if user is already authenticated with a valid session
+        if (existingSession.session && existingSession.user) {
+          console.log("[AuthCallback] Session already established");
           
           // Determine the callback type and show appropriate message
           if (type === "recovery") {
             setStatus("success");
             setMessage("Password reset link verified!");
             setDetails("You can now set a new password.");
-            // Redirect after showing success
             setTimeout(() => {
               window.location.href = "/profile";
             }, 2000);
           } else if (type === "signup" || type === "email_change" || type === "confirmation") {
-            // Email confirmation successful
             setStatus("email_confirmed");
             setMessage("Email verified successfully!");
             setDetails("Your email has been confirmed. You can now sign in with your credentials.");
-            // Redirect to sign in after showing success
             setTimeout(() => {
               window.location.href = "/sign-in?verified=true";
             }, 2500);
@@ -170,7 +178,6 @@ function AuthCallbackPage() {
               window.location.href = redirectTo;
             }, 1500);
           } else {
-            // Generic success
             setStatus("success");
             setMessage("Authenticated successfully!");
             const redirectTo = safeRedirectUrl(next, "/profile");
@@ -181,25 +188,133 @@ function AuthCallbackPage() {
           return;
         }
 
-        // No session after getSession - check if this is an email confirmation
-        // For confirmation-only flows, Supabase might not create a session
+        // No existing session - need to process the verification token
+        console.log("[AuthCallback] No existing session, checking for verification token...");
+        
+        // For email confirmation types, we need a token_hash or code
         if (type === "signup" || type === "email_change" || type === "confirmation") {
-          console.log("[AuthCallback] Email confirmed (no session - confirmation-only flow)");
-          setStatus("email_confirmed");
-          setMessage("Email verified successfully!");
-          setDetails("Your email has been confirmed. You can now sign in with your credentials.");
-          // Redirect to sign in after showing success
+          if (!tokenHash && !code) {
+            // No verification artifact - this is a false request, not a real verification
+            console.log("[AuthCallback] No token_hash or code present for email confirmation");
+            setStatus("error");
+            setMessage("Invalid verification link");
+            setDetails("This verification link is incomplete or has already been used. Please request a new one.");
+            setShowResendOption(true);
+            return;
+          }
+          
+          // Process the token
+          try {
+            let verifyResult;
+            
+            if (tokenHash) {
+              // Use token_hash for verification
+              console.log("[AuthCallback] Verifying with token_hash...");
+              verifyResult = await supabase.auth.verifyOtp({
+                type: type as 'signup' | 'email_change' | 'confirmation',
+                token_hash: tokenHash,
+              });
+            } else if (code) {
+              // Use code exchange
+              console.log("[AuthCallback] Exchanging code for session...");
+              verifyResult = await supabase.auth.exchangeCodeForSession(code);
+            }
+            
+            console.log("[AuthCallback] Verification result:", {
+              hasSession: !!verifyResult?.data.session,
+              hasUser: !!verifyResult?.data.user,
+              error: verifyResult?.error?.message
+            });
+            
+            if (verifyResult?.error) {
+              console.log("[AuthCallback] Verification error:", verifyResult.error);
+              setStatus("error");
+              setMessage("Verification failed");
+              setDetails(verifyResult.error.message);
+              setShowResendOption(true);
+              return;
+            }
+            
+            if (verifyResult?.data.session && verifyResult?.data.user) {
+              console.log("[AuthCallback] Email verified and session established");
+              setStatus("email_confirmed");
+              setMessage("Email verified successfully!");
+              setDetails("Your email has been confirmed. You can now sign in with your credentials.");
+              setTimeout(() => {
+                window.location.href = "/sign-in?verified=true";
+              }, 2500);
+              return;
+            }
+          } catch (verifyErr) {
+            console.error("[AuthCallback] Verification exception:", verifyErr);
+            setStatus("error");
+            setMessage("Verification failed");
+            setDetails(verifyErr instanceof Error ? verifyErr.message : "Unknown error");
+            setShowResendOption(true);
+            return;
+          }
+        }
+
+        // For other types or if verification didn't establish a session
+        // Check for password recovery tokens
+        if (type === "recovery") {
+          if (!tokenHash && !code) {
+            setStatus("error");
+            setMessage("Invalid recovery link");
+            setDetails("This recovery link is incomplete. Please request a new one.");
+            setShowResendOption(true);
+            return;
+          }
+          
+          // Try to process recovery token
+          const recoveryResult = tokenHash
+            ? await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
+            : await supabase.auth.exchangeCodeForSession(code!);
+          
+          if (recoveryResult.error || !recoveryResult.data.session) {
+            setStatus("error");
+            setMessage("Recovery link expired or invalid");
+            setDetails("Please request a new password reset link.");
+            setShowResendOption(true);
+            return;
+          }
+          
+          setStatus("success");
+          setMessage("Password reset link verified!");
+          setDetails("You can now set a new password.");
           setTimeout(() => {
-            window.location.href = "/sign-in?verified=true";
-          }, 2500);
+            window.location.href = "/profile";
+          }, 2000);
           return;
         }
 
-        // No session and no identifiable type - show error with retry option
-        console.log("[AuthCallback] No session after getSession");
+        // Magic link or invite - try to exchange code
+        if ((type === "magiclink" || type === "invite") && code) {
+          const magicResult = await supabase.auth.exchangeCodeForSession(code);
+          
+          if (magicResult.error || !magicResult.data.session) {
+            setStatus("error");
+            setMessage("Link expired or invalid");
+            setDetails("This link has expired. Please request a new one.");
+            setShowResendOption(true);
+            return;
+          }
+          
+          setStatus("success");
+          setMessage("Welcome!");
+          setDetails("You've been authenticated. Redirecting...");
+          const redirectTo = safeRedirectUrl(next, "/profile");
+          setTimeout(() => {
+            window.location.href = redirectTo;
+          }, 1500);
+          return;
+        }
+
+        // Nothing to work with - show error
+        console.log("[AuthCallback] No session, no verification tokens");
         setStatus("error");
-        setMessage("Unable to establish session");
-        setDetails("The verification link may have expired or is invalid. Please try signing in.");
+        setMessage("Invalid authentication link");
+        setDetails("This link is incomplete or invalid. Please request a new one.");
         setShowResendOption(true);
         
       } catch (err) {
