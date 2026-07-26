@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { User, Session, AuthError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { getAuthCallbackUrl, getPostAuthUrl } from "./auth-urls";
 
 type AuthContextType = {
   user: User | null;
@@ -115,9 +116,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = useCallback(async (email: string, password: string) => {
     console.log("[Auth] Attempting sign up:", email);
     try {
+      // Get the redirect URL for email confirmation
+      const redirectTo = getAuthCallbackUrl();
+      console.log("[Auth] Using redirect URL:", redirectTo);
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: redirectTo,
+        },
       });
       
       if (error) {
