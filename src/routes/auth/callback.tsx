@@ -9,6 +9,38 @@ export const Route = createFileRoute("/auth/callback")({
 
 type CallbackStatus = "loading" | "success" | "error" | "email_confirmed";
 
+/**
+ * Safely resolve a redirect target to prevent open-redirect attacks.
+ * Only allows same-origin relative paths (starting with / but not //).
+ */
+function safeRedirectUrl(next: string | null | undefined, fallback: string): string {
+  // If no next param, use fallback
+  if (!next) return fallback;
+  
+  // Only allow paths starting with a single slash (relative paths)
+  // Reject: //evil.com, /\/etc\/passwd, control characters, backslashes
+  const safePathPattern = /^\/[^\/\\]|\p{C}/u;
+  if (!safePathPattern.test(next) && next !== '/') {
+    console.warn("[AuthCallback] Unsafe redirect target:", next);
+    return fallback;
+  }
+  
+  // For extra safety, also verify it doesn't start with //
+  if (next.startsWith('//')) {
+    console.warn("[AuthCallback] Protocol-relative redirect rejected:", next);
+    return fallback;
+  }
+  
+  // Allow single / or paths starting with / followed by anything except /
+  // Also reject if it contains control characters or null bytes
+  if (next.includes('\0') || next.includes('%00')) {
+    console.warn("[AuthCallback] Null byte in redirect:", next);
+    return fallback;
+  }
+  
+  return next;
+}
+
 function AuthCallbackPage() {
   const [status, setStatus] = useState<CallbackStatus>("loading");
   const [message, setMessage] = useState("Processing your authentication...");
@@ -134,14 +166,14 @@ function AuthCallbackPage() {
             setMessage("Welcome!");
             setDetails("You've been authenticated. Redirecting...");
             setTimeout(() => {
-              const redirectTo = next && next.startsWith('/') ? next : "/profile";
+              const redirectTo = safeRedirectUrl(next, "/profile");
               window.location.href = redirectTo;
             }, 1500);
           } else {
             // Generic success
             setStatus("success");
             setMessage("Authenticated successfully!");
-            const redirectTo = next && next.startsWith('/') ? next : "/profile";
+            const redirectTo = safeRedirectUrl(next, "/profile");
             setTimeout(() => {
               window.location.href = redirectTo;
             }, 1500);
