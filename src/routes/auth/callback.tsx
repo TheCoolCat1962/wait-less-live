@@ -11,30 +11,27 @@ type CallbackStatus = "loading" | "success" | "error" | "email_confirmed";
 
 /**
  * Safely resolve a redirect target to prevent open-redirect attacks.
- * Only allows same-origin relative paths (starting with / but not //).
+ * Only allows same-origin relative paths: "/" or paths starting with "/" but not "//".
  */
 function safeRedirectUrl(next: string | null | undefined, fallback: string): string {
   // If no next param, use fallback
   if (!next) return fallback;
   
-  // Only allow paths starting with a single slash (relative paths)
-  // Reject: //evil.com, /\/etc\/passwd, control characters, backslashes
-  const safePathPattern = /^\/[^\/\\]|\p{C}/u;
-  if (!safePathPattern.test(next) && next !== '/') {
-    console.warn("[AuthCallback] Unsafe redirect target:", next);
-    return fallback;
-  }
-  
-  // For extra safety, also verify it doesn't start with //
+  // Reject if starts with // (protocol-relative)
   if (next.startsWith('//')) {
     console.warn("[AuthCallback] Protocol-relative redirect rejected:", next);
     return fallback;
   }
   
-  // Allow single / or paths starting with / followed by anything except /
-  // Also reject if it contains control characters or null bytes
-  if (next.includes('\0') || next.includes('%00')) {
-    console.warn("[AuthCallback] Null byte in redirect:", next);
+  // Allow "/" alone or paths starting with "/" (but not "//")
+  // Must be exactly "/" or start with "/" followed by non-slash character
+  const isValidPath = next === '/' || (/^\/[^\/\\].*/.test(next) && !next.startsWith('//'));
+  
+  // Reject control characters, backslashes, and null bytes
+  const hasUnsafeChars = /[\p{C}\\]|[\0%00]/.test(next);
+  
+  if (!isValidPath || hasUnsafeChars) {
+    console.warn("[AuthCallback] Unsafe redirect target:", next);
     return fallback;
   }
   
