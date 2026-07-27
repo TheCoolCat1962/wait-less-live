@@ -565,6 +565,12 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     return { lat, lng, radiusMiles };
   })
   .handler(async ({ data }) => {
+    console.log("[Server] fetchNearbyBusinesses called:", {
+      lat: data.lat,
+      lng: data.lng,
+      radiusMiles: data.radiusMiles,
+    });
+    
     const supabase = getSupabase();
     const radiusMeters = Math.min(Math.round(data.radiusMiles * 1609.34), 50_000);
 
@@ -592,6 +598,9 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
           milesBetween(data.lat, data.lng, a.lat, a.lng) -
           milesBetween(data.lat, data.lng, b.lat, b.lng),
       );
+    
+    console.log("[Server] Cached nearby businesses:", cachedNearby.length);
+    
     if (cachedNearby.length) {
       const newest = cachedNearby.reduce(
         (max, b) => (b.updated_at > max ? b.updated_at : max),
@@ -600,6 +609,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       const areaFresh = newest && Date.now() - new Date(newest).getTime() < BUSINESS_CACHE_TTL_MS;
       if (areaFresh) {
         const candidates = cachedNearby.map(({ updated_at, ...b }) => b);
+        console.log("[Server] Returning cached businesses:", candidates.length);
         return fetchRankedNearby(supabase, candidates, data.lat, data.lng);
       }
     }
@@ -607,7 +617,12 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     // Outside the launch region: if the search radius never reaches the NOLA
     // metro, return nothing rather than fetching out-of-region places from
     // Google (e.g. a user in Covington should not see Covington businesses).
-    if (!boxIntersectsNola(box)) return [];
+    if (!boxIntersectsNola(box)) {
+      console.log("[Server] Box does not intersect NOLA, returning empty");
+      return [];
+    }
+    
+    console.log("[Server] No cached data, would fetch from Google Places...");
 
     const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
       method: "POST",
