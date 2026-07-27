@@ -60,16 +60,39 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettings();
   
+  // Debug: Track state changes
+  const prevStatusRef = useRef<LocationStatus>("loading");
+  const prevLocationRef = useRef<UserLocation | null>(null);
+  
+  if (prevStatusRef.current !== status) {
+    console.log(`[LocationProvider] ⚡ Status changed: ${prevStatusRef.current} → ${status}`);
+    prevStatusRef.current = status;
+  }
+  
+  if (prevLocationRef.current !== location) {
+    const prevCoords = prevLocationRef.current?.coords;
+    const newCoords = location?.coords;
+    console.log(`[LocationProvider] 📍 Location changed:`, {
+      prev: prevCoords ? `${prevCoords.lat},${prevCoords.lng}` : 'null',
+      next: newCoords ? `${newCoords.lat},${newCoords.lng}` : 'null',
+      label: location?.label,
+    });
+    prevLocationRef.current = location;
+  }
+  
   // Use ref to access current settings without recreating callbacks
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
   useEffect(() => {
+    console.log(`[LocationProvider] 🔧 Initializing, reading from storage...`);
     const stored = readStored();
     if (stored) {
+      console.log(`[LocationProvider] ✅ Found stored location:`, stored);
       setLocation(stored);
       setStatus("ready");
     } else {
+      console.log(`[LocationProvider] ℹ️ No stored location, setting status to idle`);
       setStatus("idle");
     }
   }, []);
@@ -115,20 +138,38 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, []); // No dependencies - reads from ref
 
   const setManualLocation = useCallback(async (query: string) => {
+    const startTime = Date.now();
+    console.log(`[LocationProvider] 🔍 setManualLocation START: "${query}" at ${startTime}`);
+    
     setStatus("prompting");
     setError(null);
+    
     try {
+      console.log(`[LocationProvider] 🌐 Calling geocodeQuery for: "${query}"`);
       const resolved = await geocodeQuery({ data: { query } });
+      console.log(`[LocationProvider] 🌐 geocodeQuery result:`, resolved);
+      
       const loc: UserLocation = {
         coords: { lat: resolved.lat, lng: resolved.lng },
         label: resolved.label,
         source: "manual",
       };
+      
+      console.log(`[LocationProvider] 💾 Writing to storage and state...`);
       writeStored(loc);
       setLocation(loc);
       setStatus("ready");
+      
+      const duration = Date.now() - startTime;
+      console.log(`[LocationProvider] ✅ setManualLocation COMPLETE in ${duration}ms`, {
+        coords: `${loc.coords.lat},${loc.coords.lng}`,
+        label: loc.label,
+      });
+      
       return true;
     } catch (e) {
+      const duration = Date.now() - startTime;
+      console.error(`[LocationProvider] ❌ setManualLocation FAILED after ${duration}ms:`, e);
       setError(e instanceof Error ? e.message : "Could not find that location.");
       setStatus("idle");
       return false;

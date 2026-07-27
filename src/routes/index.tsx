@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef, useEffect } from "react";
 import { MapPin, Sparkles, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
@@ -9,29 +9,107 @@ import { distanceMiles, type BusinessWithWait } from "@/lib/queueless-data";
 import { useLocation } from "@/lib/location";
 import { fetchNearbyBusinesses } from "@/lib/queueless.functions";
 
+// Debug: render counter
+let homePageRenderCount = 0;
+let queryExecutionCount = 0;
+
 export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
 function HomePage() {
   const { status, location, clear } = useLocation();
+  
+  // Debug: track renders
+  const renderCountRef = useRef(++homePageRenderCount);
+  const prevLocationRef = useRef<string | undefined>(undefined);
+  
+  // Debug: Log EVERY render with timing
+  const now = Date.now();
+  const locationKey = location ? `${location.coords.lat.toFixed(4)},${location.coords.lng.toFixed(4)}` : 'null';
+  const locationChanged = prevLocationRef.current !== locationKey;
+  prevLocationRef.current = locationKey;
+  
+  console.log(`[HomePage] 🔄 Render #${renderCountRef.current} at ${now}`, {
+    timestamp: new Date().toISOString(),
+    locationKey,
+    locationLabel: location?.label,
+    status,
+    locationChanged,
+    enabled: !!location,
+  });
 
   // NOLA metro bounds (kept in sync with server). Only the launch region is
   // supported, so we don't query for out-of-region locations.
   const inNola = useMemo(() => {
-    if (!location) return true;
-    const { lat, lng } = location.coords;
-    return lat >= 29.82 && lat <= 30.15 && lng >= -90.35 && lng <= -89.55;
+    const result = !location ? true : (
+      location.coords.lat >= 29.82 && 
+      location.coords.lat <= 30.15 && 
+      location.coords.lng >= -90.35 && 
+      location.coords.lng <= -89.55
+    );
+    console.log(`[HomePage] inNola computed:`, {
+      result,
+      lat: location?.coords.lat,
+      lng: location?.coords.lng,
+    });
+    return result;
   }, [location?.coords.lat, location?.coords.lng]);
 
+  // Debug: Track when query is created/re-created
+  const queryKey = ["nearby", location?.coords.lat, location?.coords.lng];
+  const queryEnabled = !!location && inNola;
+  
+  console.log(`[HomePage] 📡 Query config:`, {
+    queryKey,
+    enabled: queryEnabled,
+    wouldFetch: queryEnabled && location !== null,
+  });
+
   const nearbyQuery = useQuery({
-    queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
-    enabled: !!location && inNola,
-    queryFn: () =>
-      fetchNearbyBusinesses({
-        data: { lat: location!.coords.lat, lng: location!.coords.lng, radiusMiles: 25 },
-      }),
+    queryKey,
+    enabled: queryEnabled,
+    queryFn: () => {
+      const execCount = ++queryExecutionCount;
+      const startTime = Date.now();
+      console.log(`[HomePage] 🚀 Query #${execCount} EXECUTING at ${startTime}`, {
+        locationAtExecution: location ? `${location.coords.lat},${location.coords.lng}` : 'NULL',
+        locationLabel: location?.label,
+        hasLocation: !!location,
+      });
+      
+      if (!location) {
+        console.error(`[HomePage] ❌ Query executing but location is NULL!`);
+        throw new Error("Location is null - race condition detected!");
+      }
+      
+      return fetchNearbyBusinesses({
+        data: { lat: location.coords.lat, lng: location.coords.lng, radiusMiles: 25 },
+      }).then(result => {
+        const duration = Date.now() - startTime;
+        console.log(`[HomePage] ✅ Query #${execCount} COMPLETED in ${duration}ms`, {
+          resultLength: result?.length ?? 0,
+          locationAtCompletion: `${location.coords.lat},${location.coords.lng}`,
+        });
+        return result;
+      }).catch(err => {
+        const duration = Date.now() - startTime;
+        console.error(`[HomePage] ❌ Query #${execCount} FAILED after ${duration}ms:`, err);
+        throw err;
+      });
+    },
     staleTime: 60_000,
+  });
+  
+  // Debug: Log query state changes
+  console.log(`[HomePage] 📊 Query state:`, {
+    isLoading: nearbyQuery.isLoading,
+    isFetching: nearbyQuery.isFetching,
+    isError: nearbyQuery.isError,
+    isSuccess: nearbyQuery.isSuccess,
+    dataLength: nearbyQuery.data?.length,
+    fetchCount: nearbyQuery.fetchStatus,
+    error: nearbyQuery.error?.message,
   });
 
   // Memoize sorted businesses to avoid recalculating on every render

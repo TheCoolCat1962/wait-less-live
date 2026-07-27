@@ -565,6 +565,13 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     return { lat, lng, radiusMiles };
   })
   .handler(async ({ data }) => {
+    const startTime = Date.now();
+    console.log(`[Server] 🚀 fetchNearbyBusinesses START at ${startTime}`, {
+      lat: data.lat,
+      lng: data.lng,
+      radiusMiles: data.radiusMiles,
+    });
+    
     const supabase = getSupabase();
     const radiusMeters = Math.min(Math.round(data.radiusMiles * 1609.34), 50_000);
 
@@ -572,6 +579,8 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     // synced within the freshness window; only hit Google Places when the area
     // cache is empty or stale. Wait times are always aggregated live below.
     const box = boundingBox(data.lat, data.lng, data.radiusMiles);
+    console.log(`[Server] 📦 Querying businesses table with bounding box:`, box);
+    
     const { data: cachedRaw } = await supabase
       .from("businesses")
       .select(
@@ -592,23 +601,40 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
           milesBetween(data.lat, data.lng, a.lat, a.lng) -
           milesBetween(data.lat, data.lng, b.lat, b.lng),
       );
+    
+    console.log(`[Server] 📊 Cached businesses found: ${cachedNearby.length}`);
+    
     if (cachedNearby.length) {
       const newest = cachedNearby.reduce(
         (max, b) => (b.updated_at > max ? b.updated_at : max),
         "",
       );
       const areaFresh = newest && Date.now() - new Date(newest).getTime() < BUSINESS_CACHE_TTL_MS;
+      console.log(`[Server] 🕐 Cache freshness: newest=${newest}, fresh=${areaFresh}`);
+      
       if (areaFresh) {
         const candidates = cachedNearby.map(({ updated_at, ...b }) => b);
-        return fetchRankedNearby(supabase, candidates, data.lat, data.lng);
+        console.log(`[Server] ✅ Returning ${candidates.length} cached businesses from cache`);
+        const result = await fetchRankedNearby(supabase, candidates, data.lat, data.lng);
+        const duration = Date.now() - startTime;
+        console.log(`[Server] ✅ fetchNearbyBusinesses COMPLETE (cache) in ${duration}ms`, {
+          resultLength: result?.length ?? 0,
+        });
+        return result;
       }
     }
 
     // Outside the launch region: if the search radius never reaches the NOLA
     // metro, return nothing rather than fetching out-of-region places from
     // Google (e.g. a user in Covington should not see Covington businesses).
-    if (!boxIntersectsNola(box)) return [];
-
+    if (!boxIntersectsNola(box)) {
+      console.log(`[Server] ⚠️ Box does not intersect NOLA metro, returning empty`);
+      const duration = Date.now() - startTime;
+      console.log(`[Server] ⚠️ fetchNearbyBusinesses COMPLETE (no-intersect) in ${duration}ms`);
+      return [];
+    }
+    
+    console.log(`[Server] 🔄 No cache, fetching from Google Places...`);
     const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
       method: "POST",
       headers: gwHeaders({
@@ -679,6 +705,8 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
       };
     });
 
+    console.log(`[Server] 📍 Google Places returned ${places.length} places, filtered to ${rows.length}`);
+    
     if (rows.length) {
       const { error } = await supabase
         .from("businesses")
@@ -694,7 +722,14 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     if (readErr) throw new Error(readErr.message);
     const stored = (storedRaw ?? []) as Array<any>;
 
-    return fetchRankedNearby(supabase, stored, data.lat, data.lng);
+    console.log(`[Server] 📦 Fetching ranked results for ${stored.length} stored businesses`);
+    const result = await fetchRankedNearby(supabase, stored, data.lat, data.lng);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Server] ✅ fetchNearbyBusinesses COMPLETE (Google Places) in ${duration}ms`, {
+      resultLength: result?.length ?? 0,
+    });
+    return result;
   });
 
 // ---------------------------------------------------------------------------
