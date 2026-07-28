@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS public.premium_waitlist (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ip_address TEXT,
   user_agent TEXT,
+  CONSTRAINT premium_waitlist_email_normalized CHECK (
+    email = lower(btrim(email))
+  ),
   CONSTRAINT premium_waitlist_email_format CHECK (
     email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
   )
