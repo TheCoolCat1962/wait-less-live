@@ -6,23 +6,22 @@ CREATE TABLE IF NOT EXISTS public.premium_waitlist (
   email TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ip_address TEXT,
-  user_agent TEXT
+  user_agent TEXT,
+  CONSTRAINT premium_waitlist_email_format CHECK (
+    email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+  )
 );
 
 -- Unique constraint on email to prevent duplicates
 CREATE UNIQUE INDEX IF NOT EXISTS premium_waitlist_email_idx ON public.premium_waitlist (email);
 
--- RLS policies for public access (insert only, no updates/deletes from client)
+-- RLS policies
 ALTER TABLE public.premium_waitlist ENABLE ROW LEVEL SECURITY;
 
--- Anyone can sign up for the waitlist
+-- Anyone can join the waitlist (RLS enforced by server-side email normalization + constraint)
 CREATE POLICY "Anyone can join the premium waitlist" 
   ON public.premium_waitlist 
   FOR INSERT 
   WITH CHECK (true);
 
--- Waitlist entries are publicly readable (for verification)
-CREATE POLICY "Premium waitlist entries are publicly readable" 
-  ON public.premium_waitlist 
-  FOR SELECT 
-  USING (true);
+-- No SELECT policy: entries are not publicly readable
