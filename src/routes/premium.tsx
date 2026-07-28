@@ -14,8 +14,10 @@ import {
   Zap,
   BarChart3,
   Shield,
+  AlertCircle,
 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
+import { registerPremiumWaitlist } from "@/lib/queueless.functions";
 
 export const Route = createFileRoute("/premium")({
   component: PremiumPage,
@@ -139,14 +141,27 @@ function PricingCard() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string>("");
 
   const handleNotifyMe = useCallback(async () => {
     setIsSubmitting(true);
-    // Simulate API call - ready for Stripe integration
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ email, timestamp: Date.now() }));
-    setIsSubmitted(true);
-    setIsSubmitting(false);
+    setError(null);
+
+    try {
+      const result = await registerPremiumWaitlist({ data: { email } });
+      setSuccessMessage(result.message);
+      setIsSubmitted(true);
+      // Also save to localStorage for client-side tracking
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ email, timestamp: Date.now() }));
+    } catch (err) {
+      // Show error message to user - do NOT show success
+      const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      setError(message);
+      setIsSubmitted(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   }, [email]);
 
   return (
@@ -174,7 +189,7 @@ function PricingCard() {
           <div>
             <p className="font-bold">You're on the list!</p>
             <p className="mt-1 text-sm opacity-80">
-              We'll notify you when Premium launches.
+              {successMessage || "We'll notify you when Premium launches."}
             </p>
           </div>
         </div>
@@ -187,10 +202,19 @@ function PricingCard() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError(null);
+              }}
               placeholder="Enter your email"
               className="w-full rounded-xl bg-white/20 px-4 py-3 text-sm font-medium placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
             />
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg bg-danger/20 px-3 py-2 text-xs text-white">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
             <button
               onClick={handleNotifyMe}
               disabled={isSubmitting}
