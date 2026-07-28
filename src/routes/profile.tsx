@@ -256,14 +256,17 @@ function ProfilePage() {
           />
         </section>
 
-        <div className="rounded-2xl border border-brand/20 bg-brand/5 p-4">
+        <Link
+          to="/premium"
+          className="block rounded-2xl border border-brand/20 bg-brand/5 p-4 transition-colors hover:border-brand/30 hover:bg-brand/10 active:bg-brand/15"
+        >
           <p className="text-xs font-bold uppercase tracking-widest text-brand">
             Go premium
           </p>
           <p className="mt-1 text-sm font-semibold">
             Wait-time alerts, trends & ad-free — $4.99/mo
           </p>
-        </div>
+        </Link>
       </main>
     </AppShell>
   );
