@@ -856,14 +856,19 @@ export const submitWaitReport = createServerFn({ method: "POST" })
     // Prevent the same reporter from submitting for the same business within 10 minutes
     if (data.reporterKey) {
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const { data: recentReports } = await supabase
+      const { data: recentReports, error: dupError } = await supabase
         .from("wait_reports")
-        .select("id")
+        .select("id", { count: "exact", head: true })
         .eq("business_id", data.businessId)
         .eq("reporter_key", data.reporterKey)
         .gte("created_at", tenMinutesAgo)
         .limit(1);
       
+      // Fail closed on error - reject if we can't verify
+      if (dupError) {
+        console.error("[submitWaitReport] Duplicate check failed:", dupError.message);
+        throw new Error("Unable to verify report limits. Please try again.");
+      }
       if (recentReports && recentReports.length > 0) {
         throw new Error("You've already reported this business recently. Please wait before submitting another report.");
       }
@@ -872,12 +877,17 @@ export const submitWaitReport = createServerFn({ method: "POST" })
     // ABUSE PREVENTION 2: Rate limiting - max 20 reports per reporter per hour
     if (data.reporterKey) {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { count } = await supabase
+      const { count, error: rateError } = await supabase
         .from("wait_reports")
         .select("id", { count: "exact", head: true })
         .eq("reporter_key", data.reporterKey)
         .gte("created_at", oneHourAgo);
       
+      // Fail closed on error
+      if (rateError) {
+        console.error("[submitWaitReport] Rate limit check failed:", rateError.message);
+        throw new Error("Unable to verify report limits. Please try again.");
+      }
       if (count !== null && count >= 20) {
         throw new Error("You've submitted too many reports recently. Please try again later.");
       }
@@ -895,12 +905,18 @@ export const submitWaitReport = createServerFn({ method: "POST" })
     // ABUSE PREVENTION 4: Check for suspicious patterns (same wait time repeated)
     if (data.reporterKey) {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data: recentSameReports } = await supabase
+      const { data: recentSameReports, error: patternError } = await supabase
         .from("wait_reports")
-        .select("id")
+        .select("id", { count: "exact", head: true })
         .eq("reporter_key", data.reporterKey)
         .eq("minutes", data.minutes)
         .gte("created_at", oneHourAgo);
+      
+      // Fail closed on error
+      if (patternError) {
+        console.error("[submitWaitReport] Pattern check failed:", patternError.message);
+        throw new Error("Unable to verify report limits. Please try again.");
+      }
       
       // If user has submitted 5+ reports with the exact same wait time in the last hour, flag it
       if (recentSameReports && recentSameReports.length >= 5) {
