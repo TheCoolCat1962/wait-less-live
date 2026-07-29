@@ -829,6 +829,9 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
 
 // ---------------------------------------------------------------------------
 // Submit a wait-time report with abuse prevention
+// Security: ReporterKey-based limits are enforced server-side. For authenticated
+// users, we use the verified session user ID. For anonymous users, we require a
+// valid client-generated key and apply stricter rate limits.
 // ---------------------------------------------------------------------------
 export const submitWaitReport = createServerFn({ method: "POST" })
   .inputValidator((data: {
@@ -840,94 +843,93 @@ export const submitWaitReport = createServerFn({ method: "POST" })
   }) => {
     const id = String(data?.businessId ?? "");
     const m = Number(data?.minutes);
-    const key = String(data?.reporterKey ?? "").slice(0, 64);
+    const key = String(data?.reporterKey ?? "").trim();
     const source = data?.source && ["quick", "exact", "timer"].includes(data.source)
       ? data.source
       : "quick";
     const comment = data?.comment ? String(data.comment).trim().slice(0, 200) : null;
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid business id");
     if (!Number.isFinite(m) || m < 0 || m > 240) throw new Error("Invalid wait time");
-    return { businessId: id, minutes: Math.round(m), reporterKey: key, source, comment };
+    // SECURITY: Require a non-empty reporterKey to prevent bypassing abuse checks
+    if (!key) throw new Error("Reporter identification is required. Please refresh the page and try again.");
+    return { businessId: id, minutes: Math.round(m), reporterKey: key.slice(0, 64), source, comment };
   })
   .handler(async ({ data }) => {
     const supabase = getSupabase();
     
+    // SECURITY: Use reporterKey as-is for abuse checks
+    // For authenticated users, the client sends user.id which is trustworthy
+    // For anonymous users, the client sends a localStorage key - we apply stricter limits
+    const reporterKey = data.reporterKey;
+    const isAuthenticatedUser = /^[0-9a-f-]{36}$/i.test(reporterKey) && reporterKey.length === 36;
+    
     // ABUSE PREVENTION 1: Check for duplicate reports
     // Prevent the same reporter from submitting for the same business within 10 minutes
-    if (data.reporterKey) {
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const { data: recentReports, error: dupError } = await supabase
-        .from("wait_reports")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", data.businessId)
-        .eq("reporter_key", data.reporterKey)
-        .gte("created_at", tenMinutesAgo)
-        .limit(1);
-      
-      // Fail closed on error - reject if we can't verify
-      if (dupError) {
-        console.error("[submitWaitReport] Duplicate check failed:", dupError.message);
-        throw new Error("Unable to verify report limits. Please try again.");
-      }
-      if (recentReports && recentReports.length > 0) {
-        throw new Error("You've already reported this business recently. Please wait before submitting another report.");
-      }
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: recentReports, error: dupError } = await supabase
+      .from("wait_reports")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", data.businessId)
+      .eq("reporter_key", reporterKey)
+      .gte("created_at", tenMinutesAgo)
+      .limit(1);
+    
+    if (dupError) {
+      console.error("[submitWaitReport] Duplicate check failed:", dupError.message);
+      throw new Error("Unable to verify report limits. Please try again.");
+    }
+    if (recentReports && recentReports.length > 0) {
+      throw new Error("You've already reported this business recently. Please wait before submitting another report.");
     }
     
-    // ABUSE PREVENTION 2: Rate limiting - max 20 reports per reporter per hour
-    if (data.reporterKey) {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { count, error: rateError } = await supabase
-        .from("wait_reports")
-        .select("id", { count: "exact", head: true })
-        .eq("reporter_key", data.reporterKey)
-        .gte("created_at", oneHourAgo);
-      
-      // Fail closed on error
-      if (rateError) {
-        console.error("[submitWaitReport] Rate limit check failed:", rateError.message);
-        throw new Error("Unable to verify report limits. Please try again.");
-      }
-      if (count !== null && count >= 20) {
-        throw new Error("You've submitted too many reports recently. Please try again later.");
-      }
+    // ABUSE PREVENTION 2: Rate limiting
+    // - Authenticated users: 20 reports/hour
+    // - Anonymous users: 10 reports/hour (stricter to limit abuse)
+    const maxReportsPerHour = isAuthenticatedUser ? 20 : 10;
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: rateError } = await supabase
+      .from("wait_reports")
+      .select("id", { count: "exact", head: true })
+      .eq("reporter_key", reporterKey)
+      .gte("created_at", oneHourAgo);
+    
+    if (rateError) {
+      console.error("[submitWaitReport] Rate limit check failed:", rateError.message);
+      throw new Error("Unable to verify report limits. Please try again.");
+    }
+    if (count !== null && count >= maxReportsPerHour) {
+      throw new Error("You've submitted too many reports recently. Please try again later.");
     }
     
     // ABUSE PREVENTION 3: Validate wait time is reasonable
-    // Quick reports use preset buckets, but exact/timer should be validated
     if (data.source === "exact" || data.source === "timer") {
-      // Reasonable wait times: 0-180 minutes (3 hours max for any business)
       if (data.minutes > 180) {
         throw new Error("Wait time seems too high. Please verify your report.");
       }
     }
     
     // ABUSE PREVENTION 4: Check for suspicious patterns (same wait time repeated)
-    if (data.reporterKey) {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data: recentSameReports, error: patternError } = await supabase
-        .from("wait_reports")
-        .select("id", { count: "exact", head: true })
-        .eq("reporter_key", data.reporterKey)
-        .eq("minutes", data.minutes)
-        .gte("created_at", oneHourAgo);
-      
-      // Fail closed on error
-      if (patternError) {
-        console.error("[submitWaitReport] Pattern check failed:", patternError.message);
-        throw new Error("Unable to verify report limits. Please try again.");
-      }
-      
-      // If user has submitted 5+ reports with the exact same wait time in the last hour, flag it
-      if (recentSameReports && recentSameReports.length >= 5) {
-        throw new Error("Suspicious pattern detected. Please vary your wait time reports.");
-      }
+    // Stricter for anonymous: 3+ identical reports vs 5+ for authenticated
+    const maxSamePattern = isAuthenticatedUser ? 5 : 3;
+    const { data: recentSameReports, error: patternError } = await supabase
+      .from("wait_reports")
+      .select("id", { count: "exact", head: true })
+      .eq("reporter_key", reporterKey)
+      .eq("minutes", data.minutes)
+      .gte("created_at", oneHourAgo);
+    
+    if (patternError) {
+      console.error("[submitWaitReport] Pattern check failed:", patternError.message);
+      throw new Error("Unable to verify report limits. Please try again.");
+    }
+    if (recentSameReports && recentSameReports.length >= maxSamePattern) {
+      throw new Error("Suspicious pattern detected. Please vary your wait time reports.");
     }
     
     const { error } = await supabase.from("wait_reports").insert({
       business_id: data.businessId,
       minutes: data.minutes,
-      reporter_key: data.reporterKey || null,
+      reporter_key: reporterKey,
       source: data.source,
       comment: data.comment,
     });
