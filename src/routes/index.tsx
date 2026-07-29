@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef } from "react";
 import { MapPin, Sparkles, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
@@ -16,6 +16,19 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const { status, location, clear } = useLocation();
 
+  // Track location version to detect changes and force query refetch
+  const locationVersionRef = useRef(0);
+  const prevLocationRef = useRef<typeof location>(null);
+
+  // Detect when location actually changes (not just re-renders)
+  if (prevLocationRef.current !== location) {
+    if (prevLocationRef.current?.coords.lat !== location?.coords.lat ||
+        prevLocationRef.current?.coords.lng !== location?.coords.lng) {
+      locationVersionRef.current++;
+    }
+    prevLocationRef.current = location;
+  }
+
   // NOLA metro bounds (kept in sync with server). Only the launch region is
   // supported, so we don't query for out-of-region locations.
   const inNola = useMemo(() => {
@@ -25,7 +38,8 @@ function HomePage() {
   }, [location?.coords.lat, location?.coords.lng]);
 
   const nearbyQuery = useQuery({
-    queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
+    // Include location version in key to force refetch when location changes
+    queryKey: ["nearby", location?.coords.lat, location?.coords.lng, locationVersionRef.current],
     enabled: !!location && inNola,
     queryFn: () =>
       fetchNearbyBusinesses({
