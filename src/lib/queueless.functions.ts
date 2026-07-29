@@ -429,14 +429,23 @@ function buildPhotoUrl(photoName: string | undefined): string | null {
 // ---------------------------------------------------------------------------
 type StoredReport = { minutes: number; created_at: string; source: string | null };
 
+interface AggregationResult {
+  current: number | null;
+  count: number;
+  latest: string | null;
+  latestMinutesAgo: number | null;
+  trend: "up" | "down" | "stable";
+  variance: number | null;
+}
+
 // Weighted current wait: newer + timer reports weigh more; ignore obvious outliers.
 function aggregateReports(reports: StoredReport[]) {
-  if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, trend: "stable" as "up" | "down" | "stable" };
+  if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, latestMinutesAgo: null, trend: "stable" as "up" | "down" | "stable", variance: null };
 
   const now = Date.now();
   // Only reports within the last 90 minutes count as "current".
   const recent = reports.filter((r) => now - new Date(r.created_at).getTime() <= 90 * 60_000);
-  if (!recent.length) return { current: null, count: 0, latest: null, trend: "stable" as const };
+  if (!recent.length) return { current: null, count: 0, latest: null, latestMinutesAgo: null, trend: "stable" as const, variance: null };
 
   // Outlier removal: drop values >2.5x the median.
   const sortedMins = [...recent.map((r) => r.minutes)].sort((a, b) => a - b);
@@ -456,6 +465,15 @@ function aggregateReports(reports: StoredReport[]) {
   }
   const current = weightSum > 0 ? Math.round(weighted / weightSum) : null;
 
+  // Calculate variance (standard deviation) for confidence calculation
+  let variance: number | null = null;
+  if (kept.length >= 2) {
+    const mean = weighted / weightSum;
+    const squaredDiffs = kept.map((r) => Math.pow(r.minutes - mean, 2));
+    const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / kept.length;
+    variance = Math.round(Math.sqrt(avgSquaredDiff));
+  }
+
   // Trend: compare avg of newest half vs older half (chronological).
   const chrono = [...kept].sort((a, b) => a.created_at.localeCompare(b.created_at));
   let trend: "up" | "down" | "stable" = "stable";
@@ -467,8 +485,11 @@ function aggregateReports(reports: StoredReport[]) {
     else if (oldAvg - newAvg >= 4) trend = "down";
   }
 
-  const latest = kept.reduce((a, b) => (a.created_at > b.created_at ? a : b)).created_at;
-  return { current, count: kept.length, latest, trend };
+  const latestReport = kept.reduce((a, b) => (a.created_at > b.created_at ? a : b));
+  const latest = latestReport.created_at;
+  const latestMinutesAgo = Math.max(0, (now - new Date(latest).getTime()) / 60_000);
+  
+  return { current, count: kept.length, latest, latestMinutesAgo, trend, variance };
 }
 
 // Attach aggregated live-wait data (from recent wait_reports) to business rows.
@@ -500,14 +521,43 @@ async function withAggregatedWaits<T extends { id: string }>(
 
   return stored.map((b) => {
     const agg = aggregateReports(byBiz.get(b.id) ?? []);
+    const updatedMinutesAgo = agg.latest
+      ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+      : null;
+    
+    // Calculate confidence based on count, age, and variance
+    let confidence: "high" | "medium" | "low" | undefined;
+    if (agg.count > 0) {
+      let score = 0;
+      // Report count scoring
+      if (agg.count >= 5) score += 4;
+      else if (agg.count >= 3) score += 3;
+      else if (agg.count >= 2) score += 2;
+      else score += 1;
+      // Recency scoring
+      if (updatedMinutesAgo !== null) {
+        if (updatedMinutesAgo <= 5) score += 3;
+        else if (updatedMinutesAgo <= 15) score += 2;
+        else if (updatedMinutesAgo <= 30) score += 1;
+      }
+      // Agreement scoring
+      if (agg.variance !== null) {
+        if (agg.variance <= 5) score += 3;
+        else if (agg.variance <= 10) score += 2;
+        else if (agg.variance <= 20) score += 1;
+      }
+      if (score >= 7) confidence = "high";
+      else if (score >= 4) confidence = "medium";
+      else confidence = "low";
+    }
+    
     return {
       ...b,
       currentMinutes: agg.current,
-      updatedMinutesAgo: agg.latest
-        ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
-        : null,
+      updatedMinutesAgo,
       contributors: agg.count,
       trend: agg.trend,
+      confidence,
     };
   });
 }
@@ -732,14 +782,40 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
       reports.map((r) => ({ minutes: r.minutes, created_at: r.created_at, source: r.source })),
     );
 
+    const updatedMinutesAgo = agg.latest
+      ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
+      : null;
+    
+    // Calculate confidence
+    let confidence: "high" | "medium" | "low" | undefined;
+    if (agg.count > 0) {
+      let score = 0;
+      if (agg.count >= 5) score += 4;
+      else if (agg.count >= 3) score += 3;
+      else if (agg.count >= 2) score += 2;
+      else score += 1;
+      if (updatedMinutesAgo !== null) {
+        if (updatedMinutesAgo <= 5) score += 3;
+        else if (updatedMinutesAgo <= 15) score += 2;
+        else if (updatedMinutesAgo <= 30) score += 1;
+      }
+      if (agg.variance !== null) {
+        if (agg.variance <= 5) score += 3;
+        else if (agg.variance <= 10) score += 2;
+        else if (agg.variance <= 20) score += 1;
+      }
+      if (score >= 7) confidence = "high";
+      else if (score >= 4) confidence = "medium";
+      else confidence = "low";
+    }
+
     return {
       ...business,
       currentMinutes: agg.current,
-      updatedMinutesAgo: agg.latest
-        ? Math.max(0, (Date.now() - new Date(agg.latest).getTime()) / 60_000)
-        : null,
+      updatedMinutesAgo,
       contributors: agg.count,
       trend: agg.trend,
+      confidence,
       reports: reports.map((r) => ({
         id: r.id,
         minutes: r.minutes,
@@ -752,7 +828,7 @@ export const getBusinessWithReports = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
-// Submit a wait-time report
+// Submit a wait-time report with abuse prevention
 // ---------------------------------------------------------------------------
 export const submitWaitReport = createServerFn({ method: "POST" })
   .inputValidator((data: {
@@ -775,6 +851,63 @@ export const submitWaitReport = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const supabase = getSupabase();
+    
+    // ABUSE PREVENTION 1: Check for duplicate reports
+    // Prevent the same reporter from submitting for the same business within 10 minutes
+    if (data.reporterKey) {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: recentReports } = await supabase
+        .from("wait_reports")
+        .select("id")
+        .eq("business_id", data.businessId)
+        .eq("reporter_key", data.reporterKey)
+        .gte("created_at", tenMinutesAgo)
+        .limit(1);
+      
+      if (recentReports && recentReports.length > 0) {
+        throw new Error("You've already reported this business recently. Please wait before submitting another report.");
+      }
+    }
+    
+    // ABUSE PREVENTION 2: Rate limiting - max 20 reports per reporter per hour
+    if (data.reporterKey) {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count } = await supabase
+        .from("wait_reports")
+        .select("id", { count: "exact", head: true })
+        .eq("reporter_key", data.reporterKey)
+        .gte("created_at", oneHourAgo);
+      
+      if (count !== null && count >= 20) {
+        throw new Error("You've submitted too many reports recently. Please try again later.");
+      }
+    }
+    
+    // ABUSE PREVENTION 3: Validate wait time is reasonable
+    // Quick reports use preset buckets, but exact/timer should be validated
+    if (data.source === "exact" || data.source === "timer") {
+      // Reasonable wait times: 0-180 minutes (3 hours max for any business)
+      if (data.minutes > 180) {
+        throw new Error("Wait time seems too high. Please verify your report.");
+      }
+    }
+    
+    // ABUSE PREVENTION 4: Check for suspicious patterns (same wait time repeated)
+    if (data.reporterKey) {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: recentSameReports } = await supabase
+        .from("wait_reports")
+        .select("id")
+        .eq("reporter_key", data.reporterKey)
+        .eq("minutes", data.minutes)
+        .gte("created_at", oneHourAgo);
+      
+      // If user has submitted 5+ reports with the exact same wait time in the last hour, flag it
+      if (recentSameReports && recentSameReports.length >= 5) {
+        throw new Error("Suspicious pattern detected. Please vary your wait time reports.");
+      }
+    }
+    
     const { error } = await supabase.from("wait_reports").insert({
       business_id: data.businessId,
       minutes: data.minutes,

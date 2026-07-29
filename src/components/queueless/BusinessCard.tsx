@@ -1,6 +1,6 @@
 import { memo, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
-import { Star, Plus } from "lucide-react";
+import { Star, Plus, ShieldCheck, Shield, ShieldAlert } from "lucide-react";
 import {
   type BusinessWithWait,
   formatUpdated,
@@ -10,6 +10,13 @@ import { BusinessImage } from "./BusinessImage";
 import { WaitBadge } from "./WaitBadge";
 import { useFavorites } from "@/lib/favorites";
 import { useReportSheet } from "./ReportSheetContext";
+
+// Confidence indicator for list view
+const confidenceDotColors: Record<string, string> = {
+  high: "bg-safe",
+  medium: "bg-caution",
+  low: "bg-danger",
+};
 
 // Extracted favorite button to isolate re-renders
 const FavoriteButton = memo(function FavoriteButton({
@@ -112,6 +119,24 @@ export const BusinessCard = memo(function BusinessCard({
                 {trend && (
                   <span className={`text-[10px] font-bold ${trend.tone}`}>
                     {trend.icon} {trend.label}
+                  </span>
+                )}
+                {business.confidence && (
+                  <span 
+                    className={`inline-flex items-center gap-1 text-[10px] font-bold ${
+                      business.confidence === "high" ? "text-safe" :
+                      business.confidence === "medium" ? "text-caution" : "text-danger"
+                    }`}
+                    title={`${business.confidence.charAt(0).toUpperCase() + business.confidence.slice(1)} confidence`}
+                  >
+                    <span className={`size-1.5 rounded-full ${confidenceDotColors[business.confidence]}`} />
+                    {business.confidence === "high" ? (
+                      <ShieldCheck className="size-3" />
+                    ) : business.confidence === "medium" ? (
+                      <Shield className="size-3" />
+                    ) : (
+                      <ShieldAlert className="size-3" />
+                    )}
                   </span>
                 )}
               </>
