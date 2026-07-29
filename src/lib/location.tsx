@@ -2,7 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
   useRef,
   useSyncExternalStore,
@@ -39,7 +38,7 @@ interface LocationContextValue {
 const LocationContext = createContext<LocationContextValue | null>(null);
 const STORAGE_KEY = "queueless.location.v1";
 
-// Synchronous localStorage read to avoid useEffect timing issues
+// Synchronous localStorage read
 function readStoredSync(): UserLocation | null {
   if (typeof window === "undefined") return null;
   try {
@@ -50,6 +49,9 @@ function readStoredSync(): UserLocation | null {
   }
 }
 
+// Subscribers for sync external store pattern
+const locationSubscribers = new Set<(location: UserLocation | null) => void>();
+
 function writeStored(loc: UserLocation | null) {
   if (typeof window === "undefined") return;
   if (loc) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(loc));
@@ -58,20 +60,58 @@ function writeStored(loc: UserLocation | null) {
   locationSubscribers.forEach((cb) => cb(loc));
 }
 
-// Subscribers for sync external store pattern
-const locationSubscribers = new Set<(location: UserLocation | null) => void>();
+// SSR-safe external store using useSyncExternalStore
+// - getServerSnapshot returns null (matches SSR output)
+// - getSnapshot reads from localStorage on client
+// - subscribe uses the subscribers set for updates
+const locationSnapshot = {
+  location: null as UserLocation | null,
+  status: "idle" as LocationStatus,
+};
 
 export function LocationProvider({ children }: { children: ReactNode }) {
-  // Initialize with stored location synchronously to avoid race conditions
-  // This ensures location is available on the first render, not after useEffect
-  const initialLocation = readStoredSync();
-  const [status, setStatus] = useState<LocationStatus>(
-    initialLocation ? "ready" : "idle"
-  );
-  const [location, setLocation] = useState<UserLocation | null>(initialLocation);
+  // useSyncExternalStore ensures hydration consistency:
+  // - Server renders with null location (getServerSnapshot)
+  // - Client hydrates with same null (initial snapshot matches)
+  // - After hydration, getSnapshot returns actual stored value
+  const [status, setStatus] = useState<LocationStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettings();
-  
+
+  // Local state for location (managed via useSyncExternalStore)
+  const [location, setLocation] = useState<UserLocation | null>(null);
+
+  // Sync external store for location with SSR support
+  const storeLocation = useSyncExternalStore(
+    (callback) => {
+      // Subscribe to external changes
+      locationSubscribers.add(callback);
+      // Return unsubscribe function
+      return () => locationSubscribers.delete(callback);
+    },
+    () => {
+      // Client-side snapshot: read from localStorage
+      const stored = readStoredSync();
+      if (stored && status === "idle") {
+        setStatus("ready");
+        setLocation(stored);
+      }
+      return stored;
+    },
+    () => {
+      // Server-side snapshot: always return null
+      return null;
+    }
+  );
+
+  // Update local state when store changes
+  if (storeLocation !== location) {
+    setLocation(storeLocation);
+    if (storeLocation) {
+      setStatus("ready");
+    }
+  }
+
   // Use ref to access current settings without recreating callbacks
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -84,11 +124,11 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
     setStatus("prompting");
     setError(null);
-    
+
     // Read from ref to avoid recreating callback on settings change
     const highAccuracy = settingsRef.current.location_accuracy;
     console.log("[Location] Requesting geolocation, high accuracy:", highAccuracy);
-    
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc: UserLocation = {
@@ -108,10 +148,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         );
         setStatus("idle");
       },
-      { 
-        enableHighAccuracy: highAccuracy, 
-        timeout: 10000, 
-        maximumAge: highAccuracy ? 120000 : 300000 
+      {
+        enableHighAccuracy: highAccuracy,
+        timeout: 10000,
+        maximumAge: highAccuracy ? 120000 : 300000,
       },
     );
   }, []); // No dependencies - reads from ref
