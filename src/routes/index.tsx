@@ -19,19 +19,27 @@ function HomePage() {
   // NOLA metro bounds (kept in sync with server). Only the launch region is
   // supported, so we don't query for out-of-region locations.
   const inNola = useMemo(() => {
-    if (!location) return true;
+    if (!location) return false;
     const { lat, lng } = location.coords;
     return lat >= 29.82 && lat <= 30.15 && lng >= -90.35 && lng <= -89.55;
   }, [location?.coords.lat, location?.coords.lng]);
 
+  // Build a stable query key - only valid location coordinates trigger a new query
+  const queryKey = useMemo<[string, number, number]>(() => {
+    if (!location?.coords) return ["nearby", 0, 0] as const;
+    return ["nearby", location.coords.lat, location.coords.lng] as const;
+  }, [location?.coords?.lat, location?.coords?.lng]);
+
+  // Only run the query when we have a valid location in the NOLA metro
   const nearbyQuery = useQuery({
-    queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
-    enabled: !!location && inNola,
+    queryKey,
+    enabled: !!location?.coords && inNola,
     queryFn: () =>
       fetchNearbyBusinesses({
         data: { lat: location!.coords.lat, lng: location!.coords.lng, radiusMiles: 25 },
       }),
     staleTime: 60_000,
+    refetchOnMount: true,
   });
 
   // Memoize sorted businesses to avoid recalculating on every render

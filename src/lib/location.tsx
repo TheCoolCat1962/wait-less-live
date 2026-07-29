@@ -85,7 +85,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     
     // Read from ref to avoid recreating callback on settings change
     const highAccuracy = settingsRef.current.location_accuracy;
-    console.log("[Location] Requesting geolocation, high accuracy:", highAccuracy);
     
     navigator.geolocation.getCurrentPosition(
       (pos) => {
