@@ -2,8 +2,9 @@ import {
   createContext,
   useCallback,
   useContext,
-  useState,
+  useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -38,79 +39,67 @@ interface LocationContextValue {
 const LocationContext = createContext<LocationContextValue | null>(null);
 const STORAGE_KEY = "queueless.location.v1";
 
-// Synchronous localStorage read
-function readStoredSync(): UserLocation | null {
+// Module-level cache for localStorage reads
+let cachedRaw: string | null = null;
+let cachedParsed: UserLocation | null = null;
+
+// Read from localStorage with caching
+function readStored(): UserLocation | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as UserLocation) : null;
+    // Only re-parse if the raw string changed
+    if (raw !== cachedRaw) {
+      cachedRaw = raw;
+      cachedParsed = raw ? (JSON.parse(raw) as UserLocation) : null;
+    }
+    return cachedParsed;
   } catch {
     return null;
   }
 }
 
-// Subscribers for sync external store pattern
-const locationSubscribers = new Set<(location: UserLocation | null) => void>();
+// Subscribers for sync external store pattern - simple void callbacks
+const locationSubscribers = new Set<() => void>();
 
 function writeStored(loc: UserLocation | null) {
   if (typeof window === "undefined") return;
   if (loc) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(loc));
   else window.localStorage.removeItem(STORAGE_KEY);
+  // Invalidate cache
+  cachedRaw = null;
+  cachedParsed = null;
   // Notify all subscribers that location changed
-  locationSubscribers.forEach((cb) => cb(loc));
+  locationSubscribers.forEach((cb) => cb());
 }
 
-// SSR-safe external store using useSyncExternalStore
-// - getServerSnapshot returns null (matches SSR output)
-// - getSnapshot reads from localStorage on client
-// - subscribe uses the subscribers set for updates
-const locationSnapshot = {
-  location: null as UserLocation | null,
-  status: "idle" as LocationStatus,
-};
-
 export function LocationProvider({ children }: { children: ReactNode }) {
-  // useSyncExternalStore ensures hydration consistency:
-  // - Server renders with null location (getServerSnapshot)
-  // - Client hydrates with same null (initial snapshot matches)
-  // - After hydration, getSnapshot returns actual stored value
+  const { settings } = useSettings();
+  
+  // Local state for status and error (managed locally, not via useSyncExternalStore)
   const [status, setStatus] = useState<LocationStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const { settings } = useSettings();
-
-  // Local state for location (managed via useSyncExternalStore)
-  const [location, setLocation] = useState<UserLocation | null>(null);
 
   // Sync external store for location with SSR support
-  const storeLocation = useSyncExternalStore(
+  // - getServerSnapshot returns null (matches SSR output)
+  // - getSnapshot returns cached localStorage value
+  // - subscribe notifies when localStorage changes externally
+  const location = useSyncExternalStore(
     (callback) => {
       // Subscribe to external changes
       locationSubscribers.add(callback);
-      // Return unsubscribe function
       return () => locationSubscribers.delete(callback);
     },
-    () => {
-      // Client-side snapshot: read from localStorage
-      const stored = readStoredSync();
-      if (stored && status === "idle") {
-        setStatus("ready");
-        setLocation(stored);
-      }
-      return stored;
-    },
-    () => {
-      // Server-side snapshot: always return null
-      return null;
-    }
+    () => readStored(),
+    () => null // Server-side snapshot: always return null
   );
 
-  // Update local state when store changes
-  if (storeLocation !== location) {
-    setLocation(storeLocation);
-    if (storeLocation) {
+  // Sync status from location changes (via useEffect, not render-time setState)
+  useEffect(() => {
+    if (location && status === "idle") {
       setStatus("ready");
     }
-  }
+  }, [location, status]);
 
   // Use ref to access current settings without recreating callbacks
   const settingsRef = useRef(settings);
@@ -125,7 +114,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     setStatus("prompting");
     setError(null);
 
-    // Read from ref to avoid recreating callback on settings change
     const highAccuracy = settingsRef.current.location_accuracy;
     console.log("[Location] Requesting geolocation, high accuracy:", highAccuracy);
 
@@ -137,7 +125,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           source: "gps",
         };
         writeStored(loc);
-        setLocation(loc);
         setStatus("ready");
       },
       (err) => {
@@ -167,7 +154,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         source: "manual",
       };
       writeStored(loc);
-      setLocation(loc);
       setStatus("ready");
       return true;
     } catch (e) {
@@ -179,7 +165,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
 
   const clear = useCallback(() => {
     writeStored(null);
-    setLocation(null);
     setStatus("idle");
     setError(null);
   }, []);
