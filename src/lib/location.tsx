@@ -5,6 +5,7 @@ import {
   useEffect,
   useState,
   useRef,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { geocodeQuery } from "./queueless.functions";
@@ -38,7 +39,8 @@ interface LocationContextValue {
 const LocationContext = createContext<LocationContextValue | null>(null);
 const STORAGE_KEY = "queueless.location.v1";
 
-function readStored(): UserLocation | null {
+// Synchronous localStorage read to avoid useEffect timing issues
+function readStoredSync(): UserLocation | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -52,27 +54,27 @@ function writeStored(loc: UserLocation | null) {
   if (typeof window === "undefined") return;
   if (loc) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(loc));
   else window.localStorage.removeItem(STORAGE_KEY);
+  // Notify all subscribers that location changed
+  locationSubscribers.forEach((cb) => cb(loc));
 }
 
+// Subscribers for sync external store pattern
+const locationSubscribers = new Set<(location: UserLocation | null) => void>();
+
 export function LocationProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<LocationStatus>("loading");
-  const [location, setLocation] = useState<UserLocation | null>(null);
+  // Initialize with stored location synchronously to avoid race conditions
+  // This ensures location is available on the first render, not after useEffect
+  const initialLocation = readStoredSync();
+  const [status, setStatus] = useState<LocationStatus>(
+    initialLocation ? "ready" : "idle"
+  );
+  const [location, setLocation] = useState<UserLocation | null>(initialLocation);
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettings();
   
   // Use ref to access current settings without recreating callbacks
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-
-  useEffect(() => {
-    const stored = readStored();
-    if (stored) {
-      setLocation(stored);
-      setStatus("ready");
-    } else {
-      setStatus("idle");
-    }
-  }, []);
 
   const requestGeolocation = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search as SearchIcon, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
@@ -20,6 +20,19 @@ function SearchPage() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState<string>("All");
   const { location } = useLocation();
+  
+  // Track location version to detect changes and force query refetch
+  const locationVersionRef = useRef(0);
+  const prevLocationRef = useRef<typeof location>(null);
+  
+  // Detect when location actually changes (not just re-renders)
+  if (prevLocationRef.current !== location) {
+    if (prevLocationRef.current?.coords.lat !== location?.coords.lat ||
+        prevLocationRef.current?.coords.lng !== location?.coords.lng) {
+      locationVersionRef.current++;
+    }
+    prevLocationRef.current = location;
+  }
 
   // NOLA metro bounds (kept in sync with server). The nearby list is only
   // available in the launch region; name search stays available everywhere
@@ -38,7 +51,8 @@ function SearchPage() {
   }, [raw]);
 
   const nearbyQuery = useQuery({
-    queryKey: ["nearby", location?.coords.lat, location?.coords.lng],
+    // Include location version in key to force refetch when location changes
+    queryKey: ["nearby", location?.coords.lat, location?.coords.lng, locationVersionRef.current],
     enabled: !!location && inNola,
     queryFn: () =>
       fetchNearbyBusinesses({
