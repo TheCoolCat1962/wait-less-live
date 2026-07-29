@@ -16,8 +16,8 @@ type CallbackStatus = "loading" | "success" | "error" | "email_confirmed";
 function safeRedirectUrl(next: string | null | undefined, fallback: string): string {
   if (!next) return fallback;
   if (next.startsWith('//')) return fallback;
-  const isValidPath = next === '/' || (/^\/[^\/\\].*/.test(next) && !next.startsWith('//'));
-  const hasUnsafeChars = /[\p{C}\\]|[\0%00]/.test(next);
+  const isValidPath = next === '/' || /^\/[^\/\\].*/.test(next);
+  const hasUnsafeChars = /[\p{C}\\[\0%00]/u.test(next);
   if (!isValidPath || hasUnsafeChars) return fallback;
   return next;
 }
