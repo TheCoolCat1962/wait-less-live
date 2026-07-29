@@ -908,13 +908,13 @@ export const submitWaitReport = createServerFn({ method: "POST" })
       }
     }
     
-    // ABUSE PREVENTION 4: Check for suspicious patterns (same wait time repeated)
-    // Stricter for anonymous: 3+ identical reports vs 5+ for authenticated
-    const maxSamePattern = isAuthenticatedUser ? 5 : 3;
-    const { data: recentSameReports, error: patternError } = await supabase
+    // ABUSE PREVENTION 4: Check for suspicious patterns (same wait time repeated per business)
+    // Scoped to both reporter_key AND business_id to count patterns per location
+    const { count: samePatternCount, error: patternError } = await supabase
       .from("wait_reports")
       .select("id", { count: "exact", head: true })
       .eq("reporter_key", reporterKey)
+      .eq("business_id", data.businessId)
       .eq("minutes", data.minutes)
       .gte("created_at", oneHourAgo);
     
@@ -922,7 +922,7 @@ export const submitWaitReport = createServerFn({ method: "POST" })
       console.error("[submitWaitReport] Pattern check failed:", patternError.message);
       throw new Error("Unable to verify report limits. Please try again.");
     }
-    if (recentSameReports && recentSameReports.length >= maxSamePattern) {
+    if (samePatternCount !== null && samePatternCount >= 5) {
       throw new Error("Suspicious pattern detected. Please vary your wait time reports.");
     }
     
