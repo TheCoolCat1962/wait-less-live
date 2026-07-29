@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FavoritesRouteImport } from './routes/favorites'
 import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as PremiumRouteImport } from './routes/premium'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ReputationRouteImport } from './routes/reputation'
 import { Route as SearchRouteImport } from './routes/search'
@@ -36,6 +37,11 @@ const FavoritesRoute = FavoritesRouteImport.update({
 const NotificationsRoute = NotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PremiumRoute = PremiumRouteImport.update({
+  id: '/premium',
+  path: '/premium',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteRouteWithChildren
   '/favorites': typeof FavoritesRoute
   '/notifications': typeof NotificationsRoute
+  '/premium': typeof PremiumRoute
   '/profile': typeof ProfileRoute
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/favorites': typeof FavoritesRoute
   '/notifications': typeof NotificationsRoute
+  '/premium': typeof PremiumRoute
   '/profile': typeof ProfileRoute
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteRouteWithChildren
   '/favorites': typeof FavoritesRoute
   '/notifications': typeof NotificationsRoute
+  '/premium': typeof PremiumRoute
   '/profile': typeof ProfileRoute
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/favorites'
     | '/notifications'
+    | '/premium'
     | '/profile'
     | '/reputation'
     | '/search'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/'
     | '/favorites'
     | '/notifications'
+    | '/premium'
     | '/profile'
     | '/reputation'
     | '/search'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/favorites'
     | '/notifications'
+    | '/premium'
     | '/profile'
     | '/reputation'
     | '/search'
@@ -186,6 +198,7 @@ export interface RootRouteChildren {
   SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   FavoritesRoute: typeof FavoritesRoute
   NotificationsRoute: typeof NotificationsRoute
+  PremiumRoute: typeof PremiumRoute
   ProfileRoute: typeof ProfileRoute
   ReputationRoute: typeof ReputationRoute
   SearchRoute: typeof SearchRoute
@@ -215,6 +228,13 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/notifications'
       preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/premium': {
+      id: '/premium'
+      path: '/premium'
+      fullPath: '/premium'
+      preLoaderRoute: typeof PremiumRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -311,6 +331,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
   FavoritesRoute: FavoritesRoute,
   NotificationsRoute: NotificationsRoute,
+  PremiumRoute: PremiumRoute,
   ProfileRoute: ProfileRoute,
   ReputationRoute: ReputationRoute,
   SearchRoute: SearchRoute,

@@ -941,3 +941,60 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     return withAggregatedWaits(supabase, stored);
   });
 
+// ---------------------------------------------------------------------------
+// Premium Waitlist Registration
+// ---------------------------------------------------------------------------
+
+export const registerPremiumWaitlist = createServerFn({ method: "POST" })
+  .validator((data: { email: string }) => {
+    const email = String(data?.email ?? "").trim().toLowerCase();
+    if (!email) throw new Error("Email is required.");
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) throw new Error("Invalid email address.");
+    return { email };
+  })
+  .handler(async ({ data }) => {
+    const supabase = getSupabase();
+
+    // Check if email already exists
+    const { data: existing } = await supabase
+      .from("premium_waitlist")
+      .select("id, email")
+      .eq("email", data.email)
+      .maybeSingle();
+
+    if (existing) {
+      // Email already registered - this is a success case, not an error
+      return {
+        success: true,
+        message: "You're already on the list!",
+        isDuplicate: true,
+      };
+    }
+
+    // Insert new registration
+    const { error } = await supabase
+      .from("premium_waitlist")
+      .insert([{ email: data.email }]);
+
+    if (error) {
+      // Handle unique constraint violation (race condition on duplicate)
+      if (error.code === "23505") {
+        return {
+          success: true,
+          message: "You're already on the list!",
+          isDuplicate: true,
+        };
+      }
+      console.error("Premium waitlist insert failed:", error);
+      throw new Error("Failed to register. Please try again.");
+    }
+
+    return {
+      success: true,
+      message: "You're on the list! We'll notify you when Premium launches.",
+      isDuplicate: false,
+    };
+  });
+
