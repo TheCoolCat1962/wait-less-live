@@ -17,7 +17,7 @@ function safeRedirectUrl(next: string | null | undefined, fallback: string): str
   if (!next) return fallback;
   if (next.startsWith('//')) return fallback;
   const isValidPath = next === '/' || /^\/[^\/\\].*/.test(next);
-  const hasUnsafeChars = /[\p{C}\\[\0%00]/u.test(next);
+  const hasUnsafeChars = /[\p{C}\\%00]/u.test(next);
   if (!isValidPath || hasUnsafeChars) return fallback;
   return next;
 }
@@ -28,6 +28,7 @@ function AuthCallbackPage() {
   const [details, setDetails] = useState<string | null>(null);
   const [showResendOption, setShowResendOption] = useState(false);
   const redirectCompleted = useRef(false);
+  const redirectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     async function handleAuthCallback() {
@@ -112,7 +113,7 @@ function AuthCallbackPage() {
             setStatus("success");
             setMessage("Welcome to QueueLess!");
             setDetails("Your account is ready. Redirecting...");
-            redirectToProfile();
+            redirectToProfile(next);
             return;
           }
         }
@@ -145,7 +146,7 @@ function AuthCallbackPage() {
             setStatus("success");
             setMessage("Email verified!");
             setDetails("Your account is ready. Redirecting...");
-            redirectToProfile();
+            redirectToProfile(next);
             return;
           }
         }
@@ -167,7 +168,7 @@ function AuthCallbackPage() {
           setStatus("success");
           setMessage("Welcome back!");
           setDetails("You're already signed in. Redirecting...");
-          redirectToProfile();
+          redirectToProfile(next);
           return;
         }
 
@@ -187,16 +188,23 @@ function AuthCallbackPage() {
       }
     }
 
-    function redirectToProfile() {
+    function redirectToProfile(next: string | null) {
       if (redirectCompleted.current) return;
       redirectCompleted.current = true;
+      const redirectUrl = safeRedirectUrl(next, "/profile");
       // Small delay to show success message, then redirect
-      setTimeout(() => {
-        window.location.href = "/profile";
+      redirectTimeout.current = setTimeout(() => {
+        window.location.href = redirectUrl;
       }, 1500);
     }
 
     handleAuthCallback();
+
+    return () => {
+      if (redirectTimeout.current) {
+        clearTimeout(redirectTimeout.current);
+      }
+    };
   }, []);
 
   return (
