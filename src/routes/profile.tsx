@@ -82,13 +82,19 @@ function ProfilePage() {
     }
   }, [isInitialized, refreshSession]);
 
-  // Fetch reports for stats (only if authenticated)
+  // Fetch reports for stats
   useEffect(() => {
-    if (isInitialized && isAuthenticated && reporterKey !== undefined) {
+    if (!isInitialized) return;
+    
+    if (isAuthenticated && reporterKey !== undefined) {
       setLoadingReports(true);
       fetchUserReports(reporterKey)
         .then(setReports)
         .finally(() => setLoadingReports(false));
+    } else {
+      // Guest or no reporter key - clear reports and stop loading
+      setReports([]);
+      setLoadingReports(false);
     }
   }, [isInitialized, isAuthenticated, reporterKey]);
 
