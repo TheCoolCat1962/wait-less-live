@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, CheckCircle, XCircle, Mail, AlertCircle } from "lucide-react";
 
@@ -14,27 +14,11 @@ type CallbackStatus = "loading" | "success" | "error" | "email_confirmed";
  * Only allows same-origin relative paths: "/" or paths starting with "/" but not "//".
  */
 function safeRedirectUrl(next: string | null | undefined, fallback: string): string {
-  // If no next param, use fallback
   if (!next) return fallback;
-  
-  // Reject if starts with // (protocol-relative)
-  if (next.startsWith('//')) {
-    console.warn("[AuthCallback] Protocol-relative redirect rejected:", next);
-    return fallback;
-  }
-  
-  // Allow "/" alone or paths starting with "/" (but not "//")
-  // Must be exactly "/" or start with "/" followed by non-slash character
+  if (next.startsWith('//')) return fallback;
   const isValidPath = next === '/' || (/^\/[^\/\\].*/.test(next) && !next.startsWith('//'));
-  
-  // Reject control characters, backslashes, and null bytes
   const hasUnsafeChars = /[\p{C}\\]|[\0%00]/.test(next);
-  
-  if (!isValidPath || hasUnsafeChars) {
-    console.warn("[AuthCallback] Unsafe redirect target:", next);
-    return fallback;
-  }
-  
+  if (!isValidPath || hasUnsafeChars) return fallback;
   return next;
 }
 
@@ -43,35 +27,24 @@ function AuthCallbackPage() {
   const [message, setMessage] = useState("Processing your authentication...");
   const [details, setDetails] = useState<string | null>(null);
   const [showResendOption, setShowResendOption] = useState(false);
+  const redirectCompleted = useRef(false);
 
   useEffect(() => {
     async function handleAuthCallback() {
       console.log("[AuthCallback] Processing auth callback...");
       
-      // Get the URL search params
       const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
       const type = params.get("type");
       const error = params.get("error");
       const errorCode = params.get("error_code");
       const tokenHash = params.get("token_hash");
+      const code = params.get("code");
       const next = params.get("next");
-      const email = params.get("email");
       
-      console.log("[AuthCallback] URL params:", { 
-        hasToken: !!token, 
-        hasTokenHash: !!tokenHash,
-        type, 
-        error, 
-        errorCode,
-        next,
-        email: email ? `${email.substring(0, 3)}...` : null
-      });
+      console.log("[AuthCallback] URL params:", { type, error, errorCode, hasTokenHash: !!tokenHash, hasCode: !!code });
 
       // Handle explicit errors from Supabase
       if (error) {
-        console.log("[AuthCallback] Error in URL:", error, errorCode);
-        
         let userMessage = "Authentication error";
         let userDetails: string | null = null;
         
@@ -115,203 +88,94 @@ function AuthCallbackPage() {
       }
 
       try {
-        // Extract verification tokens from URL
-        const token = params.get("token");
-        const tokenHash = params.get("token_hash");
-        const code = params.get("code");
-        
-        console.log("[AuthCallback] Checking for verification tokens:", {
-          hasToken: !!token,
-          hasTokenHash: !!tokenHash,
-          hasCode: !!code,
-          type
-        });
-
-        // First, try to get existing session
-        const { data: existingSession, error: sessionError } = await supabase.auth.getSession();
-        
-        console.log("[AuthCallback] getSession result:", { 
-          hasSession: !!existingSession.session,
-          hasUser: !!existingSession.user,
-          userEmail: existingSession.user?.email,
-          emailConfirmed: !!existingSession.user?.email_confirmed_at,
-          error: sessionError?.message 
-        });
-
-        if (sessionError) {
-          console.log("[AuthCallback] Session error:", sessionError);
-          setStatus("error");
-          setMessage("Session error");
-          setDetails(sessionError.message);
-          setShowResendOption(true);
-          return;
-        }
-
-        // Check if user is already authenticated with a valid session
-        if (existingSession.session && existingSession.user) {
-          console.log("[AuthCallback] Session already established");
+        // STEP 1: Try to exchange code for session (this is the modern Supabase flow)
+        if (code) {
+          console.log("[AuthCallback] Exchanging code for session...");
+          const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           
-          // Determine the callback type and show appropriate message
-          if (type === "recovery") {
-            setStatus("success");
-            setMessage("Password reset link verified!");
-            setDetails("You can now set a new password.");
-            setTimeout(() => {
-              window.location.href = "/profile";
-            }, 2000);
-          } else if (type === "signup" || type === "email_change" || type === "confirmation") {
-            setStatus("email_confirmed");
-            setMessage("Email verified successfully!");
-            setDetails("Your email has been confirmed. You can now sign in with your credentials.");
-            setTimeout(() => {
-              window.location.href = "/sign-in?verified=true";
-            }, 2500);
-          } else if (type === "invite" || type === "magiclink") {
-            setStatus("success");
-            setMessage("Welcome!");
-            setDetails("You've been authenticated. Redirecting...");
-            setTimeout(() => {
-              const redirectTo = safeRedirectUrl(next, "/profile");
-              window.location.href = redirectTo;
-            }, 1500);
-          } else {
-            setStatus("success");
-            setMessage("Authenticated successfully!");
-            const redirectTo = safeRedirectUrl(next, "/profile");
-            setTimeout(() => {
-              window.location.href = redirectTo;
-            }, 1500);
-          }
-          return;
-        }
-
-        // No existing session - need to process the verification token
-        console.log("[AuthCallback] No existing session, checking for verification token...");
-        
-        // For email confirmation types, we need a token_hash or code
-        if (type === "signup" || type === "email_change" || type === "confirmation") {
-          if (!tokenHash && !code) {
-            // No verification artifact - this is a false request, not a real verification
-            console.log("[AuthCallback] No token_hash or code present for email confirmation");
+          if (exchangeError) {
+            console.error("[AuthCallback] Code exchange error:", exchangeError);
             setStatus("error");
-            setMessage("Invalid verification link");
-            setDetails("This verification link is incomplete or has already been used. Please request a new one.");
+            setMessage("Authentication failed");
+            setDetails(exchangeError.message);
             setShowResendOption(true);
             return;
           }
           
-          // Process the token
-          try {
-            let verifyResult;
-            
-            if (tokenHash) {
-              // Use token_hash for verification
-              console.log("[AuthCallback] Verifying with token_hash...");
-              verifyResult = await supabase.auth.verifyOtp({
-                type: type as 'signup' | 'email_change' | 'confirmation',
-                token_hash: tokenHash,
-              });
-            } else if (code) {
-              // Use code exchange
-              console.log("[AuthCallback] Exchanging code for session...");
-              verifyResult = await supabase.auth.exchangeCodeForSession(code);
-            }
-            
-            console.log("[AuthCallback] Verification result:", {
-              hasSession: !!verifyResult?.data.session,
-              hasUser: !!verifyResult?.data.user,
-              error: verifyResult?.error?.message
+          if (exchangeData.session && exchangeData.user) {
+            console.log("[AuthCallback] Session established via code exchange:", {
+              userEmail: exchangeData.user.email,
+              emailConfirmed: !!exchangeData.user.email_confirmed_at
             });
             
-            if (verifyResult?.error) {
-              console.log("[AuthCallback] Verification error:", verifyResult.error);
-              setStatus("error");
-              setMessage("Verification failed");
-              setDetails(verifyResult.error.message);
-              setShowResendOption(true);
-              return;
-            }
-            
-            if (verifyResult?.data.session && verifyResult?.data.user) {
-              console.log("[AuthCallback] Email verified and session established");
-              setStatus("email_confirmed");
-              setMessage("Email verified successfully!");
-              setDetails("Your email has been confirmed. You can now sign in with your credentials.");
-              setTimeout(() => {
-                window.location.href = "/sign-in?verified=true";
-              }, 2500);
-              return;
-            }
-          } catch (verifyErr) {
-            console.error("[AuthCallback] Verification exception:", verifyErr);
+            // Success! Redirect to profile
+            setStatus("success");
+            setMessage("Welcome to QueueLess!");
+            setDetails("Your account is ready. Redirecting...");
+            redirectToProfile();
+            return;
+          }
+        }
+
+        // STEP 2: If no code, try token_hash verification
+        if (tokenHash && (type === "signup" || type === "confirmation" || type === "email_change" || type === "recovery")) {
+          console.log("[AuthCallback] Verifying with token_hash...");
+          const verifyType = type === "confirmation" ? "signup" : type;
+          
+          const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+            type: verifyType as 'signup' | 'recovery' | 'email_change',
+            token_hash: tokenHash,
+          });
+          
+          if (verifyError) {
+            console.error("[AuthCallback] Token verification error:", verifyError);
             setStatus("error");
             setMessage("Verification failed");
-            setDetails(verifyErr instanceof Error ? verifyErr.message : "Unknown error");
+            setDetails(verifyError.message);
             setShowResendOption(true);
+            return;
+          }
+          
+          if (verifyData.session && verifyData.user) {
+            console.log("[AuthCallback] Session established via token verification:", {
+              userEmail: verifyData.user.email,
+              emailConfirmed: !!verifyData.user.email_confirmed_at
+            });
+            
+            setStatus("success");
+            setMessage("Email verified!");
+            setDetails("Your account is ready. Redirecting...");
+            redirectToProfile();
             return;
           }
         }
 
-        // For other types or if verification didn't establish a session
-        // Check for password recovery tokens
-        if (type === "recovery") {
-          if (!tokenHash && !code) {
-            setStatus("error");
-            setMessage("Invalid recovery link");
-            setDetails("This recovery link is incomplete. Please request a new one.");
-            setShowResendOption(true);
-            return;
-          }
-          
-          // Try to process recovery token
-          const recoveryResult = tokenHash
-            ? await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
-            : await supabase.auth.exchangeCodeForSession(code!);
-          
-          if (recoveryResult.error || !recoveryResult.data.session) {
-            setStatus("error");
-            setMessage("Recovery link expired or invalid");
-            setDetails("Please request a new password reset link.");
-            setShowResendOption(true);
-            return;
-          }
+        // STEP 3: Check for existing session (might have been set by another tab or auto-refresh)
+        console.log("[AuthCallback] Checking for existing session...");
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error("[AuthCallback] Session check error:", sessionError);
+        }
+        
+        if (sessionData.session && sessionData.user) {
+          console.log("[AuthCallback] Existing session found:", {
+            userEmail: sessionData.user.email,
+            emailConfirmed: !!sessionData.user.email_confirmed_at
+          });
           
           setStatus("success");
-          setMessage("Password reset link verified!");
-          setDetails("You can now set a new password.");
-          setTimeout(() => {
-            window.location.href = "/profile";
-          }, 2000);
+          setMessage("Welcome back!");
+          setDetails("You're already signed in. Redirecting...");
+          redirectToProfile();
           return;
         }
 
-        // Magic link or invite - try to exchange code
-        if ((type === "magiclink" || type === "invite") && code) {
-          const magicResult = await supabase.auth.exchangeCodeForSession(code);
-          
-          if (magicResult.error || !magicResult.data.session) {
-            setStatus("error");
-            setMessage("Link expired or invalid");
-            setDetails("This link has expired. Please request a new one.");
-            setShowResendOption(true);
-            return;
-          }
-          
-          setStatus("success");
-          setMessage("Welcome!");
-          setDetails("You've been authenticated. Redirecting...");
-          const redirectTo = safeRedirectUrl(next, "/profile");
-          setTimeout(() => {
-            window.location.href = redirectTo;
-          }, 1500);
-          return;
-        }
-
-        // Nothing to work with - show error
-        console.log("[AuthCallback] No session, no verification tokens");
+        // STEP 4: Nothing worked - show error
+        console.log("[AuthCallback] No session established");
         setStatus("error");
-        setMessage("Invalid authentication link");
-        setDetails("This link is incomplete or invalid. Please request a new one.");
+        setMessage("Authentication incomplete");
+        setDetails("We couldn't complete the authentication. Please try signing in again.");
         setShowResendOption(true);
         
       } catch (err) {
@@ -321,6 +185,15 @@ function AuthCallbackPage() {
         setDetails(err instanceof Error ? err.message : "Unknown error");
         setShowResendOption(true);
       }
+    }
+
+    function redirectToProfile() {
+      if (redirectCompleted.current) return;
+      redirectCompleted.current = true;
+      // Small delay to show success message, then redirect
+      setTimeout(() => {
+        window.location.href = "/profile";
+      }, 1500);
     }
 
     handleAuthCallback();

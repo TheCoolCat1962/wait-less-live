@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Award, Bell, ChevronRight, LogIn, Settings, Star, Loader2, LogOut } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { useAuth } from "@/lib/auth";
@@ -54,14 +54,15 @@ function Row({
 }
 
 function ProfilePage() {
-  const { user, loading: authLoading, signOut, refreshSession } = useAuth();
+  const navigate = useNavigate();
+  const { user, loading: authLoading, signOut, refreshSession, isAuthenticated } = useAuth();
   const { reporterKey } = useReputation();
   const [signingOut, setSigningOut] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [reports, setReports] = useState<any[]>([]);
   const [loadingReports, setLoadingReports] = useState(true);
 
-  // Wait for auth to be initialized before showing content
+  // Wait for auth to be initialized before making any decisions
   useEffect(() => {
     if (!authLoading) {
       setIsInitialized(true);
@@ -69,24 +70,27 @@ function ProfilePage() {
         hasUser: !!user,
         userEmail: user?.email,
         emailConfirmed: !!user?.email_confirmed_at,
+        isAuthenticated
       });
     }
-  }, [authLoading, user]);
+  }, [authLoading, user, isAuthenticated]);
 
   // Refresh session on mount to ensure we have latest auth state
   useEffect(() => {
-    refreshSession();
-  }, [refreshSession]);
+    if (isInitialized) {
+      refreshSession();
+    }
+  }, [isInitialized, refreshSession]);
 
-  // Fetch reports for stats
+  // Fetch reports for stats (only if authenticated)
   useEffect(() => {
-    if (!authLoading && reporterKey !== undefined) {
+    if (isInitialized && isAuthenticated && reporterKey !== undefined) {
       setLoadingReports(true);
       fetchUserReports(reporterKey)
         .then(setReports)
         .finally(() => setLoadingReports(false));
     }
-  }, [authLoading, reporterKey]);
+  }, [isInitialized, isAuthenticated, reporterKey]);
 
   // Calculate stats
   const stats = useMemo(() => {

@@ -30,23 +30,31 @@ function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
-  // Check for verified param from email confirmation redirect
+  // Wait for auth to initialize before making redirect decisions
   useEffect(() => {
-    if (searchParams.verified) {
-      setSuccessMessage("Your email has been verified! Please sign in with your credentials.");
-      // Clear the URL param
-      window.history.replaceState({}, '', '/sign-in');
+    if (!authLoading) {
+      setInitialized(true);
     }
-  }, [searchParams.verified]);
+  }, [authLoading]);
 
-  // Redirect if already logged in
+  // Redirect if already logged in (but only after auth is initialized)
   useEffect(() => {
-    if (isAuthenticated && !authLoading) {
+    if (initialized && isAuthenticated) {
       console.log("[SignIn] User already authenticated, redirecting to profile");
       navigate({ to: "/profile" });
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [initialized, isAuthenticated, navigate]);
+
+  // Check for verified param from email confirmation redirect
+  useEffect(() => {
+    if (searchParams.verified && !isAuthenticated) {
+      setSuccessMessage("Your email has been verified! Please sign in with your credentials.");
+      // Clear the URL param without triggering navigation
+      window.history.replaceState({}, '', '/sign-in');
+    }
+  }, [searchParams.verified, isAuthenticated]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
