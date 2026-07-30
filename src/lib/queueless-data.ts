@@ -4,6 +4,7 @@
 export type WaitLevel = "none" | "short" | "medium" | "long";
 export type ReportSource = "quick" | "exact" | "timer";
 export type Trend = "up" | "down" | "stable";
+export type ConfidenceLevel = "high" | "medium" | "low";
 
 export const WAIT_OPTIONS: Array<{
   level: WaitLevel;
@@ -45,6 +46,7 @@ export interface BusinessWithWait extends Business {
   updatedMinutesAgo: number | null;
   contributors: number;
   trend?: Trend;
+  confidence?: ConfidenceLevel;
   distanceMi?: number;
 }
 
@@ -78,6 +80,80 @@ export function trendLabel(t: Trend | undefined): { icon: string; label: string;
   if (t === "up") return { icon: "📈", label: "Getting busier", tone: "text-danger" };
   if (t === "down") return { icon: "📉", label: "Getting shorter", tone: "text-safe" };
   return { icon: "➖", label: "Stable", tone: "text-muted-foreground" };
+}
+
+export interface ConfidenceInfo {
+  level: ConfidenceLevel;
+  label: string;
+  color: string;
+  bgColor: string;
+  dotColor: string;
+  description: string;
+}
+
+export function confidenceFromReports(
+  count: number,
+  latestMinutesAgo: number | null,
+  variance: number | null
+): ConfidenceInfo {
+  // Calculate confidence based on:
+  // 1. Number of recent reports (more reports = higher confidence)
+  // 2. Age of latest report (newer = higher confidence)
+  // 3. Agreement between reports (lower variance = higher confidence)
+  
+  let score = 0;
+  
+  // Report count scoring (0-4 points)
+  if (count >= 5) score += 4;
+  else if (count >= 3) score += 3;
+  else if (count >= 2) score += 2;
+  else if (count >= 1) score += 1;
+  
+  // Recency scoring (0-3 points) - based on latest report age
+  if (latestMinutesAgo !== null) {
+    if (latestMinutesAgo <= 5) score += 3;
+    else if (latestMinutesAgo <= 15) score += 2;
+    else if (latestMinutesAgo <= 30) score += 1;
+    // else score += 0 (very old)
+  }
+  
+  // Agreement scoring (0-3 points) - based on variance
+  if (variance !== null) {
+    if (variance <= 5) score += 3;      // Very consistent
+    else if (variance <= 10) score += 2; // Moderate variance
+    else if (variance <= 20) score += 1; // High variance
+    // else score += 0 (very inconsistent)
+  }
+  
+  // Determine confidence level
+  if (score >= 7) {
+    return {
+      level: "high",
+      label: "High Confidence",
+      color: "text-safe",
+      bgColor: "bg-safe/10",
+      dotColor: "bg-safe",
+      description: "Based on multiple recent reports",
+    };
+  } else if (score >= 4) {
+    return {
+      level: "medium",
+      label: "Medium Confidence",
+      color: "text-caution",
+      bgColor: "bg-caution/10",
+      dotColor: "bg-caution",
+      description: "Limited recent data",
+    };
+  } else {
+    return {
+      level: "low",
+      label: "Low Confidence",
+      color: "text-danger",
+      bgColor: "bg-danger/10",
+      dotColor: "bg-danger",
+      description: "Single or outdated report",
+    };
+  }
 }
 
 // Emoji lookup that first honors the Google Places primary_type, then the

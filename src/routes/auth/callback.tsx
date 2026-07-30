@@ -12,12 +12,22 @@ type CallbackStatus = "loading" | "success" | "error" | "email_confirmed";
 /**
  * Safely resolve a redirect target to prevent open-redirect attacks.
  * Only allows same-origin relative paths: "/" or paths starting with "/" but not "//".
+ * Blocks control characters, backslashes, and null-byte encoding (e.g., %00).
+ * 
+ * Examples:
+ *   "/" → allowed
+ *   "/profile" → allowed
+ *   "/business/10" → allowed (digit 0 is safe)
+ *   "/business/%00" → blocked (null-byte encoding)
+ *   "//example.com" → blocked (protocol-relative)
+ *   "\\server\share" → blocked (UNC path)
  */
 function safeRedirectUrl(next: string | null | undefined, fallback: string): string {
   if (!next) return fallback;
   if (next.startsWith('//')) return fallback;
   const isValidPath = next === '/' || /^\/[^\/\\].*/.test(next);
-  const hasUnsafeChars = /[\p{C}\\[\0%00]/u.test(next);
+  // Block control characters, backslashes, OR literal %00 (null-byte encoding)
+  const hasUnsafeChars = /[\p{C}\\]/u.test(next) || /%00/i.test(next);
   if (!isValidPath || hasUnsafeChars) return fallback;
   return next;
 }
@@ -28,6 +38,7 @@ function AuthCallbackPage() {
   const [details, setDetails] = useState<string | null>(null);
   const [showResendOption, setShowResendOption] = useState(false);
   const redirectCompleted = useRef(false);
+  const redirectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     async function handleAuthCallback() {
@@ -112,7 +123,7 @@ function AuthCallbackPage() {
             setStatus("success");
             setMessage("Welcome to QueueLess!");
             setDetails("Your account is ready. Redirecting...");
-            redirectToProfile();
+            redirectToProfile(next);
             return;
           }
         }
@@ -145,7 +156,7 @@ function AuthCallbackPage() {
             setStatus("success");
             setMessage("Email verified!");
             setDetails("Your account is ready. Redirecting...");
-            redirectToProfile();
+            redirectToProfile(next);
             return;
           }
         }
@@ -167,7 +178,7 @@ function AuthCallbackPage() {
           setStatus("success");
           setMessage("Welcome back!");
           setDetails("You're already signed in. Redirecting...");
-          redirectToProfile();
+          redirectToProfile(next);
           return;
         }
 
@@ -187,16 +198,23 @@ function AuthCallbackPage() {
       }
     }
 
-    function redirectToProfile() {
+    function redirectToProfile(next: string | null) {
       if (redirectCompleted.current) return;
       redirectCompleted.current = true;
+      const redirectUrl = safeRedirectUrl(next, "/profile");
       // Small delay to show success message, then redirect
-      setTimeout(() => {
-        window.location.href = "/profile";
+      redirectTimeout.current = setTimeout(() => {
+        window.location.href = redirectUrl;
       }, 1500);
     }
 
     handleAuthCallback();
+
+    return () => {
+      if (redirectTimeout.current) {
+        clearTimeout(redirectTimeout.current);
+      }
+    };
   }, []);
 
   return (

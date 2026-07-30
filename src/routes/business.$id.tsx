@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clock, MapPin, Star, Users, Loader2, Plus, Timer } from "lucide-react";
+import { ArrowLeft, Clock, MapPin, Star, Users, Loader2, Plus, Timer, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessImage } from "@/components/queueless/BusinessImage";
 import { WaitBadge } from "@/components/queueless/WaitBadge";
-import { crowdLabel, formatUpdated, toneFromMinutes, trendLabel } from "@/lib/queueless-data";
+import { crowdLabel, formatUpdated, toneFromMinutes, trendLabel, type ConfidenceLevel } from "@/lib/queueless-data";
 import { useFavorites } from "@/lib/favorites";
 import { useReportSheet } from "@/components/queueless/ReportSheetContext";
 import { getBusinessWithReports } from "@/lib/queueless.functions";
@@ -42,6 +42,28 @@ const toneText: Record<string, string> = {
   caution: "text-caution",
   danger: "text-danger",
   neutral: "text-foreground",
+};
+
+// Confidence level display configuration
+const confidenceConfig: Record<ConfidenceLevel, { icon: typeof ShieldCheck; color: string; bgColor: string; label: string }> = {
+  high: {
+    icon: ShieldCheck,
+    color: "text-safe",
+    bgColor: "bg-safe/10 border-safe/20",
+    label: "High Confidence",
+  },
+  medium: {
+    icon: Shield,
+    color: "text-caution",
+    bgColor: "bg-caution/10 border-caution/20",
+    label: "Medium Confidence",
+  },
+  low: {
+    icon: ShieldAlert,
+    color: "text-danger",
+    bgColor: "bg-danger/10 border-danger/20",
+    label: "Low Confidence",
+  },
 };
 
 type BusinessDetail = Awaited<ReturnType<typeof getBusinessWithReports>>;
@@ -139,8 +161,22 @@ function BusinessPage() {
           <p className={`mt-1 text-sm font-bold ${toneText[tone]}`}>
             {crowdLabel(business.currentMinutes)}
           </p>
+          
+          {/* Confidence indicator */}
+          {business.currentMinutes != null && business.confidence && (
+            <div className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 ${confidenceConfig[business.confidence].bgColor}`}>
+              {(() => {
+                const Icon = confidenceConfig[business.confidence].icon;
+                return <Icon className={`size-4 ${confidenceConfig[business.confidence].color}`} />;
+              })()}
+              <span className={`text-xs font-bold ${confidenceConfig[business.confidence].color}`}>
+                {confidenceConfig[business.confidence].label}
+              </span>
+            </div>
+          )}
+          
           {business.currentMinutes != null && (
-            <p className="mt-1 text-xs font-medium text-muted-foreground">
+            <p className="mt-2 text-xs font-medium text-muted-foreground">
               Based on {business.contributors} recent report
               {business.contributors === 1 ? "" : "s"}
             </p>
