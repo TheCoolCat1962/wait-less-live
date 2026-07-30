@@ -1092,3 +1092,280 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     return withAggregatedWaits(supabase, stored);
   });
 
+// ---------------------------------------------------------------------------
+// Autocomplete suggestions using Google Places Autocomplete API
+// Provides fast, live suggestions as users type
+// ---------------------------------------------------------------------------
+
+export interface AutocompleteSuggestion {
+  placeId: string;
+  description: string;
+  mainText: string;
+  secondaryText: string;
+  types: string[];
+  matchedSubstrings: Array<{ offset: number; length: number }>;
+}
+
+export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
+  .inputValidator((data: { query: string; lat?: number; lng?: number }) => {
+    const query = String(data?.query ?? "").trim();
+    if (query.length < 2 || query.length > 100) {
+      return { query: "", lat: 0, lng: 0 };
+    }
+    const lat = Number.isFinite(Number(data?.lat)) ? Number(data!.lat) : NOLA_CENTER.lat;
+    const lng = Number.isFinite(Number(data?.lng)) ? Number(data!.lng) : NOLA_CENTER.lng;
+    return { query, lat, lng };
+  })
+  .handler(async ({ data }) => {
+    if (!data.query) return [];
+
+    // First, try to find matches in cached businesses (for instant results)
+    const supabase = getSupabase();
+    const queryLower = data.query.toLowerCase();
+    
+    const { data: cachedBusinesses } = await supabase
+      .from("businesses")
+      .select("id, google_place_id, name, address, city, state, category, lat, lng")
+      .ilike("name", `%${data.query}%`)
+      .gte("lat", NOLA_BOUNDS.south)
+      .lte("lat", NOLA_BOUNDS.north)
+      .gte("lng", NOLA_BOUNDS.west)
+      .lte("lng", NOLA_BOUNDS.east)
+      .limit(5);
+
+    const cachedFresh = ((cachedBusinesses ?? []) as any[]).filter(
+      (b) => Date.now() - new Date(b.updated_at).getTime() < BUSINESS_CACHE_TTL_MS,
+    );
+
+    // Check if cached results match well (exact or prefix match)
+    const cachedSuggestions: AutocompleteSuggestion[] = cachedFresh
+      .filter((b) => {
+        const nameLower = b.name.toLowerCase();
+        return nameLower.includes(queryLower) && isInNolaMetro(b.lat, b.lng);
+      })
+      .slice(0, 3)
+      .map((b) => ({
+        placeId: b.google_place_id,
+        description: `${b.name}, ${b.city || b.address || ""}`,
+        mainText: b.name,
+        secondaryText: b.city || b.address || "",
+        types: [b.category],
+        matchedSubstrings: [{ offset: 0, length: data.query.length }],
+      }));
+
+    // If we have good cached matches, return them immediately
+    const hasExactMatch = cachedFresh.some(
+      (b) => b.name.toLowerCase().startsWith(queryLower)
+    );
+    
+    if (hasExactMatch && cachedSuggestions.length > 0) {
+      return cachedSuggestions;
+    }
+
+    // Call Google Places Autocomplete API
+    const params = new URLSearchParams({
+      input: data.query,
+      key: process.env.GOOGLE_MAPS_API_KEY!,
+      types: "establishment",
+      components: "country:us",
+    });
+
+    // Add location bias
+    if (data.lat && data.lng) {
+      params.set("location", `${data.lat},${data.lng}`);
+      params.set("radius", "40000"); // ~25 miles
+    }
+
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
+    );
+
+    if (!res.ok) {
+      console.error("Autocomplete API error:", res.status);
+      return cachedSuggestions; // Fall back to cached results
+    }
+
+    const json = await res.json() as {
+      predictions?: Array<{
+        place_id: string;
+        description: string;
+        structured_formatting: {
+          main_text: string;
+          main_text_matched_substrings: Array<{ offset: number; length: number }>;
+          secondary_text: string;
+        };
+        types: string[];
+        terms?: Array<{ value: string }>;
+      }>;
+      status: string;
+    };
+
+    if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
+      console.error("Autocomplete status:", json.status);
+      return cachedSuggestions;
+    }
+
+    const suggestions: AutocompleteSuggestion[] = (json.predictions ?? [])
+      .filter((p) => {
+        // Filter out generic/suspicious predictions
+        const types = p.types ?? [];
+        return !types.includes("country") && 
+               !types.includes("administrative_area_level_1") &&
+               !types.includes("locality") &&
+               !types.includes("postal_code");
+      })
+      .slice(0, 5)
+      .map((p) => ({
+        placeId: p.place_id,
+        description: p.description,
+        mainText: p.structured_formatting?.main_text ?? p.description,
+        secondaryText: p.structured_formatting?.secondary_text ?? "",
+        types: p.types ?? [],
+        matchedSubstrings: p.structured_formatting?.main_text_matched_substrings ?? [],
+      }));
+
+    // Merge cached results with API results, prioritizing cached (they have wait times)
+    const merged = [...cachedSuggestions];
+    for (const s of suggestions) {
+      if (!merged.some((m) => m.placeId === s.placeId)) {
+        merged.push(s);
+      }
+    }
+
+    return merged.slice(0, 5);
+  });
+
+// ---------------------------------------------------------------------------
+// Get place details by place ID (for autocomplete selection)
+// ---------------------------------------------------------------------------
+
+export interface PlaceDetails {
+  placeId: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  lat: number;
+  lng: number;
+  category: string;
+  phone: string | null;
+  logoUrl: string | null;
+}
+
+export const getPlaceDetails = createServerFn({ method: "POST" })
+  .inputValidator((data: { placeId: string }) => {
+    const placeId = String(data?.placeId ?? "").trim();
+    if (!placeId) throw new Error("Place ID is required");
+    return { placeId };
+  })
+  .handler(async ({ data }) => {
+    const supabase = getSupabase();
+
+    // First check if we have this business cached
+    const { data: cached } = await supabase
+      .from("businesses")
+      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .eq("google_place_id", data.placeId)
+      .single();
+
+    if (cached) {
+      const cat = pickCategory(cached.primary_type, [cached.category]);
+      return {
+        placeId: cached.google_place_id,
+        name: cached.name,
+        address: cached.address,
+        city: cached.city,
+        state: cached.state,
+        zip: cached.zip,
+        lat: cached.lat,
+        lng: cached.lng,
+        category: cached.category,
+        phone: cached.phone,
+        logoUrl: cached.logo_url,
+      } as PlaceDetails;
+    }
+
+    // Fetch from Google Places Details API
+    const res = await fetch(
+      `${GATEWAY_URL}/places/v1/places/${data.placeId}`,
+      {
+        headers: gwHeaders({
+          "X-Goog-FieldMask":
+            "id,displayName,formattedAddress,location,types,primaryType,addressComponents,internationalPhoneNumber,photos",
+        }),
+      },
+    );
+
+    if (!res.ok) await handleGwError(res);
+    const json = await res.json() as {
+      id: string;
+      displayName?: { text: string };
+      formattedAddress?: string;
+      location?: { latitude: number; longitude: number };
+      types?: string[];
+      primaryType?: string;
+      addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
+      internationalPhoneNumber?: string;
+      photos?: Array<{ name: string }>;
+    };
+
+    if (!json.id || !json.location || !json.displayName?.text) {
+      throw new Error("Invalid place data received");
+    }
+
+    const comps = (json.addressComponents ?? []).map((c) => ({
+      types: c.types,
+      short_name: c.shortText,
+      long_name: c.longText,
+    }));
+
+    const cat = pickCategory(json.primaryType, json.types);
+
+    // Upsert to cache
+    const row = {
+      google_place_id: json.id,
+      name: json.displayName.text,
+      address: json.formattedAddress ?? null,
+      city:
+        pickAddressComponent(comps, "locality") ??
+        pickAddressComponent(comps, "sublocality") ??
+        pickAddressComponent(comps, "postal_town"),
+      state: pickAddressComponent(comps, "administrative_area_level_1", true),
+      zip: pickAddressComponent(comps, "postal_code"),
+      lat: json.location.latitude,
+      lng: json.location.longitude,
+      category: cat.label,
+      primary_type: cat.primary,
+      phone: json.internationalPhoneNumber ?? null,
+      logo_url: buildPhotoUrl(json.photos?.[0]?.name),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: upsertErr } = await supabase
+      .from("businesses")
+      .upsert(row, { onConflict: "google_place_id" });
+    if (upsertErr) console.error("upsert failed:", upsertErr);
+
+    // Get the stored record with ID
+    const { data: stored } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("google_place_id", data.placeId)
+      .single();
+
+    return {
+      placeId: json.id,
+      name: json.displayName.text,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      zip: row.zip,
+      lat: row.lat,
+      lng: row.lng,
+      category: row.category,
+      phone: row.phone,
+      logoUrl: row.logo_url,
+    } as PlaceDetails;
+  });
+

@@ -1,14 +1,18 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search as SearchIcon, Loader2 } from "lucide-react";
+import { Search as SearchIcon, Loader2, X } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessCard } from "@/components/queueless/BusinessCard";
+import { AutocompleteDropdown } from "@/components/queueless/AutocompleteDropdown";
 import { distanceMiles, type BusinessWithWait } from "@/lib/queueless-data";
 import { useLocation } from "@/lib/location";
 import {
   fetchNearbyBusinesses,
   searchBusinessesByText,
+  getAutocompleteSuggestions,
+  getPlaceDetails,
+  type AutocompleteSuggestion,
 } from "@/lib/queueless.functions";
 
 export const Route = createFileRoute("/search")({
@@ -19,12 +23,17 @@ function SearchPage() {
   const [raw, setRaw] = useState("");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState<string>("All");
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<AutocompleteSuggestion | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const { location } = useLocation();
-  
+
   // Track location version to detect changes and force query refetch
   const locationVersionRef = useRef(0);
   const prevLocationRef = useRef<typeof location>(null);
-  
+
   // Detect when location actually changes (not just re-renders)
   if (prevLocationRef.current !== location) {
     if (prevLocationRef.current?.coords.lat !== location?.coords.lat ||
@@ -44,16 +53,38 @@ function SearchPage() {
       location.coords.lng <= -89.55
     : true;
 
-  // Debounce the query so we don't hit Places on every keystroke.
+  // Debounce the query at 250ms for live autocomplete
   useEffect(() => {
-    const t = setTimeout(() => setQ(raw.trim()), 300);
+    const t = setTimeout(() => {
+      const trimmed = raw.trim();
+      setQ(trimmed);
+      // Show autocomplete when query is 3+ characters
+      setShowAutocomplete(trimmed.length >= 3);
+      setSelectedSuggestion(null);
+    }, 250);
     return () => clearTimeout(t);
   }, [raw]);
+
+  // Autocomplete query - enabled when 3+ chars and no selected suggestion
+  const autocompleteQuery = useQuery({
+    queryKey: ["autocomplete", q, location?.coords.lat, location?.coords.lng],
+    enabled: q.length >= 3 && !selectedSuggestion && showAutocomplete,
+    queryFn: () =>
+      getAutocompleteSuggestions({
+        data: {
+          query: q,
+          lat: location?.coords.lat,
+          lng: location?.coords.lng,
+        },
+      }),
+    staleTime: 60_000, // Cache autocomplete results longer
+    gcTime: 5 * 60_000,
+  });
 
   const nearbyQuery = useQuery({
     // Include location version in key to force refetch when location changes
     queryKey: ["nearby", location?.coords.lat, location?.coords.lng, locationVersionRef.current],
-    enabled: !!location && inNola,
+    enabled: !!location && inNola && q.length < 3,
     queryFn: () =>
       fetchNearbyBusinesses({
         data: {
@@ -67,7 +98,7 @@ function SearchPage() {
 
   const textQuery = useQuery({
     queryKey: ["searchText", q, location?.coords.lat, location?.coords.lng],
-    enabled: q.length >= 2,
+    enabled: q.length >= 2 && !selectedSuggestion,
     queryFn: () =>
       searchBusinessesByText({
         data: {
@@ -79,14 +110,74 @@ function SearchPage() {
     staleTime: 30_000,
   });
 
+  // Determine which query to show
   const activeQuery = q.length >= 2 ? textQuery : nearbyQuery;
+  
+  // When autocomplete suggestion is selected, fetch that business
+  const selectedBusinessQuery = useQuery({
+    queryKey: ["selectedBusiness", selectedSuggestion?.placeId],
+    enabled: !!selectedSuggestion,
+    queryFn: async () => {
+      if (!selectedSuggestion) return null;
+      const details = await getPlaceDetails({ data: { placeId: selectedSuggestion.placeId } });
+      // Navigate to the business page
+      // We need to get the business ID from the database
+      return details;
+    },
+  });
 
-  const list: BusinessWithWait[] = (activeQuery.data ?? []).map((b) => ({
-    ...b,
-    distanceMi: location
-      ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
-      : undefined,
-  }));
+  // Navigate to selected business
+  useEffect(() => {
+    if (selectedSuggestion) {
+      // Store the suggestion in session storage and navigate
+      sessionStorage.setItem("selectedBusiness", JSON.stringify(selectedSuggestion));
+      // The navigation will happen when user confirms selection
+    }
+  }, [selectedSuggestion]);
+
+  // Build list of businesses to show
+  const list: BusinessWithWait[] = useMemo(() => {
+    if (activeQuery.data) {
+      return activeQuery.data.map((b) => ({
+        ...b,
+        distanceMi: location
+          ? distanceMiles(location.coords, { lat: b.lat, lng: b.lng })
+          : undefined,
+      }));
+    }
+    return [];
+  }, [activeQuery.data, location]);
+
+  // Intelligent ranking: exact > prefix > partial > nearby
+  const rankedList = useMemo(() => {
+    if (q.length < 3) return list;
+    
+    const queryLower = q.toLowerCase();
+    
+    return [...list].sort((a, b) => {
+      const nameLowerA = a.name.toLowerCase();
+      const nameLowerB = b.name.toLowerCase();
+      
+      // Exact match (highest priority)
+      if (nameLowerA === queryLower && nameLowerB !== queryLower) return -1;
+      if (nameLowerB === queryLower && nameLowerA !== queryLower) return 1;
+      
+      // Prefix match
+      const aStartsWith = nameLowerA.startsWith(queryLower);
+      const bStartsWith = nameLowerB.startsWith(queryLower);
+      if (aStartsWith && !bStartsWith) return -1;
+      if (bStartsWith && !aStartsWith) return 1;
+      
+      // Contains match (shorter names first)
+      if (nameLowerA.includes(queryLower) && !nameLowerB.includes(queryLower)) return -1;
+      if (nameLowerB.includes(queryLower) && !nameLowerA.includes(queryLower)) return 1;
+      
+      // Then by distance
+      const distA = a.distanceMi ?? 999;
+      const distB = b.distanceMi ?? 999;
+      return distA - distB;
+    });
+  }, [list, q]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -95,10 +186,64 @@ function SearchPage() {
   }, [list]);
 
   const filtered = useMemo(() => {
-    // Preserve server order: Places relevance for name search, wait-priority
-    // ranking for the nearby (empty-query) list.
-    return list.filter((b) => (category === "All" ? true : b.category === category));
-  }, [category, list]);
+    return rankedList.filter((b) => (category === "All" ? true : b.category === category));
+  }, [category, rankedList]);
+
+  // Handle suggestion selection
+  const handleSelectSuggestion = useCallback((suggestion: AutocompleteSuggestion) => {
+    setSelectedSuggestion(suggestion);
+    setRaw(suggestion.mainText);
+    setQ(suggestion.mainText);
+    setShowAutocomplete(false);
+    
+    // Navigate to search with the selected suggestion stored
+    sessionStorage.setItem("searchSuggestion", JSON.stringify(suggestion));
+    
+    // Update the text query to fetch the full business
+    setSelectedSuggestion(suggestion);
+  }, []);
+
+  // Handle search submit (Enter key)
+  const handleSearchSubmit = useCallback(() => {
+    if (q.length >= 2) {
+      setShowAutocomplete(false);
+    }
+  }, [q]);
+
+  // Clear search
+  const handleClear = useCallback(() => {
+    setRaw("");
+    setQ("");
+    setShowAutocomplete(false);
+    setSelectedSuggestion(null);
+    inputRef.current?.focus();
+  }, []);
+
+  // Close autocomplete when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target as Node)
+      ) {
+        setShowAutocomplete(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Handle keyboard navigation
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setShowAutocomplete(false);
+    } else if (e.key === "Enter") {
+      setShowAutocomplete(false);
+      handleSearchSubmit();
+    }
+  }, [handleSearchSubmit]);
 
   return (
     <AppShell>
@@ -110,11 +255,40 @@ function SearchPage() {
         <div className="relative">
           <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
+            ref={inputRef}
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => raw.length >= 3 && setShowAutocomplete(true)}
             placeholder="Business name, category, or neighborhood…"
-            className="w-full rounded-xl bg-surface-muted py-3 pl-10 pr-4 text-sm font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand"
+            className="w-full rounded-xl bg-surface-muted py-3 pl-10 pr-10 text-sm font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
+          {raw && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+          
+          {/* Autocomplete dropdown */}
+          {showAutocomplete && (
+            <div ref={dropdownRef}>
+              <AutocompleteDropdown
+                suggestions={autocompleteQuery.data ?? []}
+                isLoading={autocompleteQuery.isLoading}
+                onSelect={handleSelectSuggestion}
+                onDismiss={() => setShowAutocomplete(false)}
+                searchQuery={q}
+              />
+            </div>
+          )}
         </div>
       </header>
 
@@ -143,6 +317,15 @@ function SearchPage() {
             Set your location on the Home tab to search nearby.
           </p>
         )}
+        
+        {/* Show typing indicator when user is still typing */}
+        {raw.length >= 3 && raw.length > q.length && (
+          <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+            <div className="size-3 animate-pulse rounded-full bg-brand" />
+            <span>Keep typing...</span>
+          </div>
+        )}
+        
         {activeQuery.isLoading && (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
@@ -166,7 +349,14 @@ function SearchPage() {
                   : "No places nearby yet."}
             </p>
           ) : (
-            filtered.map((b) => <BusinessCard key={b.id} business={b} />)
+            <>
+              {q.length >= 3 && (
+                <p className="text-xs font-medium text-muted-foreground">
+                  {filtered.length} result{filtered.length !== 1 ? "s" : ""} for "{q}"
+                </p>
+              )}
+              {filtered.map((b) => <BusinessCard key={b.id} business={b} />)}
+            </>
           ))}
       </main>
     </AppShell>
