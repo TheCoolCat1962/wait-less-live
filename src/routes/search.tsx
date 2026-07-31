@@ -67,11 +67,11 @@ function SearchPage() {
       
       const trimmed = raw.trim();
       setQ(trimmed);
-      // Show autocomplete when query is 3+ characters, but not if a suggestion was just selected
-      setShowAutocomplete(trimmed.length >= 3);
+      // Show autocomplete when query is 3+ characters, but not if a suggestion is selected
+      setShowAutocomplete(!selectedSuggestion && trimmed.length >= 3);
     }, 250);
     return () => clearTimeout(t);
-  }, [raw]);
+  }, [raw, selectedSuggestion]);
 
   // Autocomplete query - enabled when 3+ chars and no selected suggestion
   const autocompleteQuery = useQuery({
@@ -265,9 +265,16 @@ function SearchPage() {
           <input
             ref={inputRef}
             value={raw}
-            onChange={(e) => setRaw(e.target.value)}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              setRaw(newValue);
+              // If user edits after selecting a suggestion, clear the selection
+              if (selectedSuggestion && newValue !== selectedSuggestion.mainText) {
+                setSelectedSuggestion(null);
+              }
+            }}
             onKeyDown={handleKeyDown}
-            onFocus={() => raw.length >= 3 && setShowAutocomplete(true)}
+            onFocus={() => !selectedSuggestion && raw.length >= 3 && setShowAutocomplete(true)}
             placeholder="Business name, category, or neighborhood…"
             className="w-full rounded-xl bg-surface-muted py-3 pl-10 pr-10 text-sm font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand"
             autoComplete="off"
