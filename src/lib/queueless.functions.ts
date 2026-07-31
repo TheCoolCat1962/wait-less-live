@@ -1163,9 +1163,15 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
     }
 
     // Call Google Places Autocomplete API
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_API_KEY is not configured");
+      return cachedSuggestions; // Fall back to cached results only
+    }
+    
     const params = new URLSearchParams({
       input: data.query,
-      key: process.env.GOOGLE_MAPS_API_KEY!,
+      key: apiKey,
       types: "establishment",
       components: "country:us",
     });
