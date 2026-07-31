@@ -1125,7 +1125,7 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
     
     const { data: cachedBusinesses } = await supabase
       .from("businesses")
-      .select("id, google_place_id, name, address, city, state, category, lat, lng")
+      .select("id, google_place_id, name, address, city, state, category, lat, lng, updated_at")
       .ilike("name", `%${data.query}%`)
       .gte("lat", NOLA_BOUNDS.south)
       .lte("lat", NOLA_BOUNDS.north)
@@ -1133,7 +1133,7 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
       .lte("lng", NOLA_BOUNDS.east)
       .limit(5);
 
-    const cachedFresh = ((cachedBusinesses ?? []) as any[]).filter(
+    const cachedFresh = ((cachedBusinesses ?? []) as CachedBusinessRow[]).filter(
       (b) => Date.now() - new Date(b.updated_at).getTime() < BUSINESS_CACHE_TTL_MS,
     );
 
