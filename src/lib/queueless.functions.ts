@@ -431,7 +431,8 @@ type StoredReport = { minutes: number; created_at: string; source: string | null
 
 interface AggregationResult {
   current: number | null;
-  count: number;
+  count: number;           // Reports in current window (affects displayed wait)
+  historicalCount: number; // Reports in 24-hour window (for analytics)
   latest: string | null;
   latestMinutesAgo: number | null;
   trend: "up" | "down" | "stable";
@@ -449,25 +450,41 @@ const HALF_LIFE_MS = HALF_LIFE_HOURS * 60 * 60 * 1000;
 // Weighted current wait: newer + timer reports weigh more; ignore obvious outliers.
 // Uses exponential decay over 24 hours with a 2-hour hard cutoff for "current" display.
 function aggregateReports(reports: StoredReport[]) {
-  if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, latestMinutesAgo: null, trend: "stable" as "up" | "down" | "stable", variance: null };
+  if (!reports.length) return {
+    current: null as number | null,
+    count: 0,
+    historicalCount: 0,
+    latest: null as string | null,
+    latestMinutesAgo: null,
+    trend: "stable" as const,
+    variance: null
+  };
 
   const now = Date.now();
   
   // Only include reports within the 24-hour window
   const withinWindow = reports.filter((r) => now - new Date(r.created_at).getTime() <= REPORT_WINDOW_MS);
-  if (!withinWindow.length) return { current: null, count: 0, latest: null, latestMinutesAgo: null, trend: "stable" as const, variance: null };
+  if (!withinWindow.length) return {
+    current: null,
+    count: 0,
+    historicalCount: 0,
+    latest: null,
+    latestMinutesAgo: null,
+    trend: "stable" as const,
+    variance: null
+  };
 
   // For "current" wait, only use reports from the last 2 hours
   const currentWindow = withinWindow.filter((r) => now - new Date(r.created_at).getTime() <= CURRENT_WAIT_MS);
   
-  // If no recent reports, check if we have any reports in the 24-hour window
-  // for trend/variance purposes, but don't show a "current" wait
+  // If no recent reports, report count is 0 but we track historical count
   if (!currentWindow.length) {
     const latestReport = withinWindow.reduce((a, b) => (a.created_at > b.created_at ? a : b));
     const latestMinutesAgo = (now - new Date(latestReport.created_at).getTime()) / 60_000;
     return {
       current: null,
-      count: withinWindow.length,
+      count: 0, // No current reports
+      historicalCount: withinWindow.length,
       latest: latestReport.created_at,
       latestMinutesAgo,
       trend: "stable" as const,
@@ -531,7 +548,15 @@ function aggregateReports(reports: StoredReport[]) {
   const latest = latestReport.created_at;
   const latestMinutesAgo = Math.max(0, (now - new Date(latest).getTime()) / 60_000);
   
-  return { current, count: kept.length, latest, latestMinutesAgo, trend, variance };
+  return {
+    current,
+    count: kept.length,
+    historicalCount: withinWindow.length,
+    latest,
+    latestMinutesAgo,
+    trend,
+    variance
+  };
 }
 
 // Attach aggregated live-wait data (from recent wait_reports) to business rows.
