@@ -29,6 +29,9 @@ function SearchPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { location } = useLocation();
+  
+  // Ref to track if user just selected a suggestion (to prevent debounce from clearing it)
+  const justSelectedRef = useRef(false);
 
   // Track location version to detect changes and force query refetch
   const locationVersionRef = useRef(0);
@@ -56,11 +59,16 @@ function SearchPage() {
   // Debounce the query at 250ms for live autocomplete
   useEffect(() => {
     const t = setTimeout(() => {
+      // Don't update if user just selected a suggestion
+      if (justSelectedRef.current) {
+        justSelectedRef.current = false;
+        return;
+      }
+      
       const trimmed = raw.trim();
       setQ(trimmed);
-      // Show autocomplete when query is 3+ characters
+      // Show autocomplete when query is 3+ characters, but not if a suggestion was just selected
       setShowAutocomplete(trimmed.length >= 3);
-      setSelectedSuggestion(null);
     }, 250);
     return () => clearTimeout(t);
   }, [raw]);
@@ -98,7 +106,7 @@ function SearchPage() {
 
   const textQuery = useQuery({
     queryKey: ["searchText", q, location?.coords.lat, location?.coords.lng],
-    enabled: q.length >= 2 && !selectedSuggestion,
+    enabled: q.length >= 2,
     queryFn: () =>
       searchBusinessesByText({
         data: {
@@ -191,16 +199,16 @@ function SearchPage() {
 
   // Handle suggestion selection
   const handleSelectSuggestion = useCallback((suggestion: AutocompleteSuggestion) => {
+    // Mark that user just selected to prevent debounce from interfering
+    justSelectedRef.current = true;
+    
     setSelectedSuggestion(suggestion);
     setRaw(suggestion.mainText);
     setQ(suggestion.mainText);
     setShowAutocomplete(false);
     
-    // Navigate to search with the selected suggestion stored
+    // Store suggestion in session storage for reference
     sessionStorage.setItem("searchSuggestion", JSON.stringify(suggestion));
-    
-    // Update the text query to fetch the full business
-    setSelectedSuggestion(suggestion);
   }, []);
 
   // Handle search submit (Enter key)
