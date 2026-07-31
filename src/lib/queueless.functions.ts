@@ -1242,10 +1242,10 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
 export interface PlaceDetails {
   placeId: string;
   name: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
   lat: number;
   lng: number;
   category: string;
@@ -1283,7 +1283,7 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
         category: cached.category,
         phone: cached.phone,
         logoUrl: cached.logo_url,
-      } as PlaceDetails;
+      };
     }
 
     // Fetch from Google Places Details API
@@ -1366,6 +1366,6 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
       category: row.category,
       phone: row.phone,
       logoUrl: row.logo_url,
-    } as PlaceDetails;
+    };
   });
 
