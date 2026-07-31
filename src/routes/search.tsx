@@ -11,7 +11,6 @@ import {
   fetchNearbyBusinesses,
   searchBusinessesByText,
   getAutocompleteSuggestions,
-  getPlaceDetails,
   type AutocompleteSuggestion,
 } from "@/lib/queueless.functions";
 
@@ -120,28 +119,6 @@ function SearchPage() {
 
   // Determine which query to show
   const activeQuery = q.length >= 2 ? textQuery : nearbyQuery;
-  
-  // When autocomplete suggestion is selected, fetch that business
-  const selectedBusinessQuery = useQuery({
-    queryKey: ["selectedBusiness", selectedSuggestion?.placeId],
-    enabled: !!selectedSuggestion,
-    queryFn: async () => {
-      if (!selectedSuggestion) return null;
-      const details = await getPlaceDetails({ data: { placeId: selectedSuggestion.placeId } });
-      // Navigate to the business page
-      // We need to get the business ID from the database
-      return details;
-    },
-  });
-
-  // Navigate to selected business
-  useEffect(() => {
-    if (selectedSuggestion) {
-      // Store the suggestion in session storage and navigate
-      sessionStorage.setItem("selectedBusiness", JSON.stringify(selectedSuggestion));
-      // The navigation will happen when user confirms selection
-    }
-  }, [selectedSuggestion]);
 
   // Build list of businesses to show
   const list: BusinessWithWait[] = useMemo(() => {
