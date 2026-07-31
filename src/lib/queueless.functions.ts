@@ -438,28 +438,67 @@ interface AggregationResult {
   variance: number | null;
 }
 
+// Configuration constants for wait time aggregation
+const REPORT_WINDOW_HOURS = 24;           // Reports older than this are ignored
+const REPORT_WINDOW_MS = REPORT_WINDOW_HOURS * 60 * 60 * 1000;
+const CURRENT_WAIT_HOURS = 2;             // Reports within this window affect "current" wait
+const CURRENT_WAIT_MS = CURRENT_WAIT_HOURS * 60 * 60 * 1000;
+const HALF_LIFE_HOURS = 6;                // Weight halves every 6 hours
+const HALF_LIFE_MS = HALF_LIFE_HOURS * 60 * 60 * 1000;
+
 // Weighted current wait: newer + timer reports weigh more; ignore obvious outliers.
+// Uses exponential decay over 24 hours with a 2-hour hard cutoff for "current" display.
 function aggregateReports(reports: StoredReport[]) {
   if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, latestMinutesAgo: null, trend: "stable" as "up" | "down" | "stable", variance: null };
 
   const now = Date.now();
-  // Only reports within the last 90 minutes count as "current".
-  const recent = reports.filter((r) => now - new Date(r.created_at).getTime() <= 90 * 60_000);
-  if (!recent.length) return { current: null, count: 0, latest: null, latestMinutesAgo: null, trend: "stable" as const, variance: null };
+  
+  // Only include reports within the 24-hour window
+  const withinWindow = reports.filter((r) => now - new Date(r.created_at).getTime() <= REPORT_WINDOW_MS);
+  if (!withinWindow.length) return { current: null, count: 0, latest: null, latestMinutesAgo: null, trend: "stable" as const, variance: null };
 
-  // Outlier removal: drop values >2.5x the median.
-  const sortedMins = [...recent.map((r) => r.minutes)].sort((a, b) => a - b);
+  // For "current" wait, only use reports from the last 2 hours
+  const currentWindow = withinWindow.filter((r) => now - new Date(r.created_at).getTime() <= CURRENT_WAIT_MS);
+  
+  // If no recent reports, check if we have any reports in the 24-hour window
+  // for trend/variance purposes, but don't show a "current" wait
+  if (!currentWindow.length) {
+    const latestReport = withinWindow.reduce((a, b) => (a.created_at > b.created_at ? a : b));
+    const latestMinutesAgo = (now - new Date(latestReport.created_at).getTime()) / 60_000;
+    return {
+      current: null,
+      count: withinWindow.length,
+      latest: latestReport.created_at,
+      latestMinutesAgo,
+      trend: "stable" as const,
+      variance: null
+    };
+  }
+
+  // Outlier removal: drop values >2.5x the median (from current window only).
+  const sortedMins = [...currentWindow.map((r) => r.minutes)].sort((a, b) => a - b);
   const median = sortedMins[Math.floor(sortedMins.length / 2)];
-  const kept = recent.filter((r) => median === 0 || r.minutes <= median * 2.5 + 5);
+  const kept = currentWindow.filter((r) => median === 0 || r.minutes <= median * 2.5 + 5);
 
+  // Calculate weighted average with exponential decay
+  // Weight halves every HALF_LIFE_HOURS (6 hours by default)
   let weightSum = 0;
   let weighted = 0;
   for (const r of kept) {
-    const ageMin = Math.max(0, (now - new Date(r.created_at).getTime()) / 60_000);
-    // Recency weight: 1.0 at 0m, ~0.5 at 30m, ~0.1 at 90m
-    const recencyW = Math.exp(-ageMin / 30);
-    const sourceW = r.source === "timer" ? 1.5 : r.source === "exact" ? 1.2 : 1;
-    const w = recencyW * sourceW;
+    const ageMs = Math.max(0, now - new Date(r.created_at).getTime());
+    const ageHours = ageMs / (60 * 60 * 1000);
+    
+    // Exponential decay: weight = 2^(-ageHours / halfLifeHours)
+    // At 0 hours: weight = 1
+    // At 6 hours: weight = 0.5
+    // At 12 hours: weight = 0.25
+    // At 24 hours: weight = 0.0625
+    const recencyWeight = Math.pow(2, -ageHours / HALF_LIFE_HOURS);
+    
+    // Source weight: timer reports are more accurate
+    const sourceWeight = r.source === "timer" ? 1.5 : r.source === "exact" ? 1.2 : 1;
+    
+    const w = recencyWeight * sourceWeight;
     weighted += r.minutes * w;
     weightSum += w;
   }
@@ -474,13 +513,16 @@ function aggregateReports(reports: StoredReport[]) {
     variance = Math.round(Math.sqrt(avgSquaredDiff));
   }
 
-  // Trend: compare avg of newest half vs older half (chronological).
+  // Trend: compare avg of newest quarter vs oldest quarter (within 2-hour window)
   const chrono = [...kept].sort((a, b) => a.created_at.localeCompare(b.created_at));
   let trend: "up" | "down" | "stable" = "stable";
-  if (chrono.length >= 3) {
-    const half = Math.floor(chrono.length / 2);
-    const oldAvg = chrono.slice(0, half).reduce((s, r) => s + r.minutes, 0) / half;
-    const newAvg = chrono.slice(-half).reduce((s, r) => s + r.minutes, 0) / half;
+  if (chrono.length >= 4) {
+    const quarterLen = Math.max(1, Math.floor(chrono.length / 4));
+    const oldestQuarter = chrono.slice(0, quarterLen);
+    const newestQuarter = chrono.slice(-quarterLen);
+    const oldAvg = oldestQuarter.reduce((s, r) => s + r.minutes, 0) / oldestQuarter.length;
+    const newAvg = newestQuarter.reduce((s, r) => s + r.minutes, 0) / newestQuarter.length;
+    // Require a meaningful difference (4+ minutes) to show trend
     if (newAvg - oldAvg >= 4) trend = "up";
     else if (oldAvg - newAvg >= 4) trend = "down";
   }
@@ -499,11 +541,12 @@ async function withAggregatedWaits<T extends { id: string }>(
   stored: T[],
 ) {
   const ids = stored.map((b) => b.id);
+  // Fetch reports from the last 24 hours (matches REPORT_WINDOW_HOURS)
   const { data: reportsRaw } = await supabase
     .from("wait_reports")
     .select("business_id, minutes, created_at, source")
     .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
-    .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
+    .gte("created_at", new Date(Date.now() - REPORT_WINDOW_MS).toISOString())
     .order("created_at", { ascending: false });
   const reports = (reportsRaw ?? []) as Array<{
     business_id: string;
@@ -534,11 +577,11 @@ async function withAggregatedWaits<T extends { id: string }>(
       else if (agg.count >= 3) score += 3;
       else if (agg.count >= 2) score += 2;
       else score += 1;
-      // Recency scoring
+      // Recency scoring (adjusted for 2-hour current window)
       if (updatedMinutesAgo !== null) {
         if (updatedMinutesAgo <= 5) score += 3;
         else if (updatedMinutesAgo <= 15) score += 2;
-        else if (updatedMinutesAgo <= 30) score += 1;
+        else if (updatedMinutesAgo <= 60) score += 1; // Extended to 1 hour
       }
       // Agreement scoring
       if (agg.variance !== null) {
