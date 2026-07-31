@@ -1328,6 +1328,13 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
 
     const cat = pickCategory(json.primaryType, json.types);
 
+    // Validate coordinates are in allowed region before caching
+    if (!isInNolaMetro(json.location.latitude, json.location.longitude)) {
+      throw new Error(
+        `Place is outside the supported region (NOLA metro). lat=${json.location.latitude}, lng=${json.location.longitude}`,
+      );
+    }
+
     // Upsert to cache
     const row = {
       google_place_id: json.id,
