@@ -1230,72 +1230,61 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
       return cachedSuggestions;
     }
 
-    // Call Google Places Autocomplete API
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_API_KEY is not configured");
-      return cachedSuggestions; // Fall back to cached results only
-    }
-    
-    const params = new URLSearchParams({
-      input: data.query,
-      key: apiKey,
-      types: "establishment",
-      components: "country:us",
+    // Call Google Places Autocomplete API (New) through gateway
+    const res = await fetch(`${GATEWAY_URL}/places/v1/places:autocomplete`, {
+      method: "POST",
+      headers: gwHeaders({
+        "Content-Type": "application/json",
+        "X-Goog-FieldMask":
+          "suggestions.placePrediction.place.id,suggestions.placePrediction.displayText.text,suggestions.placePrediction.placePredictionType,suggestions.placePrediction.mainText.text,suggestions.placePrediction.mainText.matchedSubstrings,suggestions.placePrediction.secondaryText.text",
+      }),
+      body: JSON.stringify({
+        input: data.query,
+        locationBias: {
+          circle: {
+            center: { latitude: data.lat, longitude: data.lng },
+            radius: 40_000, // ~25 miles
+          },
+        },
+        includedPrimaryTypes: ["establishment"],
+      }),
     });
 
-    // Add location bias
-    if (data.lat && data.lng) {
-      params.set("location", `${data.lat},${data.lng}`);
-      params.set("radius", "40000"); // ~25 miles
-    }
-
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
-    );
-
+    // Abort on slow responses (>3s)
     if (!res.ok) {
       console.error("Autocomplete API error:", res.status);
       return cachedSuggestions; // Fall back to cached results
     }
 
     const json = await res.json() as {
-      predictions?: Array<{
-        place_id: string;
-        description: string;
-        structured_formatting: {
-          main_text: string;
-          main_text_matched_substrings: Array<{ offset: number; length: number }>;
-          secondary_text: string;
+      suggestions?: Array<{
+        placePrediction?: {
+          place?: { id: string };
+          displayText?: { text: string };
+          placePredictionType?: string;
+          mainText?: { text: string; matchedSubstrings?: Array<{ offset: number; length: number }> };
+          secondaryText?: { text: string };
         };
-        types: string[];
-        terms?: Array<{ value: string }>;
       }>;
-      status: string;
     };
 
-    if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
-      console.error("Autocomplete status:", json.status);
-      return cachedSuggestions;
-    }
-
-    const suggestions: AutocompleteSuggestion[] = (json.predictions ?? [])
-      .filter((p) => {
-        // Filter out generic/suspicious predictions
-        const types = p.types ?? [];
-        return !types.includes("country") && 
-               !types.includes("administrative_area_level_1") &&
-               !types.includes("locality") &&
-               !types.includes("postal_code");
+    const suggestions: AutocompleteSuggestion[] = (json.suggestions ?? [])
+      .filter((s) => {
+        // Filter out generic predictions (e.g., regions)
+        const type = s.placePrediction?.placePredictionType ?? "";
+        return type !== "country" &&
+               type !== "administrative_area_level_1" &&
+               type !== "locality" &&
+               type !== "postal_code";
       })
       .slice(0, 5)
-      .map((p) => ({
-        placeId: p.place_id,
-        description: p.description,
-        mainText: p.structured_formatting?.main_text ?? p.description,
-        secondaryText: p.structured_formatting?.secondary_text ?? "",
-        types: p.types ?? [],
-        matchedSubstrings: p.structured_formatting?.main_text_matched_substrings ?? [],
+      .map((s) => ({
+        placeId: s.placePrediction?.place?.id ?? "",
+        description: s.placePrediction?.displayText?.text ?? "",
+        mainText: s.placePrediction?.mainText?.text ?? s.placePrediction?.displayText?.text ?? "",
+        secondaryText: s.placePrediction?.secondaryText?.text ?? "",
+        types: s.placePrediction?.placePredictionType ? [s.placePrediction.placePredictionType] : [],
+        matchedSubstrings: s.placePrediction?.mainText?.matchedSubstrings ?? [],
       }));
 
     // Merge cached results with API results, prioritizing cached (they have wait times)
