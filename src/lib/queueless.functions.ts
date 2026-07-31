@@ -1217,7 +1217,7 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
         description: `${b.name}, ${b.city || b.address || ""}`,
         mainText: b.name,
         secondaryText: b.city || b.address || "",
-        types: [b.category],
+        types: b.category ? [b.category] : [],
         matchedSubstrings: [{ offset: 0, length: data.query.length }],
       }));
 
