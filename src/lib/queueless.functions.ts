@@ -1303,6 +1303,7 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 
 export interface PlaceDetails {
+  id: string;
   placeId: string;
   name: string;
   address: string | null;
@@ -1339,6 +1340,7 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
     if (cached) {
       const cat = pickCategory(cached.primary_type, [cached.category]);
       return {
+        id: cached.id,
         placeId: cached.google_place_id,
         name: cached.name,
         address: cached.address,
@@ -1429,6 +1431,7 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
       .single();
 
     return {
+      id: stored?.id ?? "",
       placeId: json.id,
       name: json.displayName.text,
       address: row.address,
