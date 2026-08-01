@@ -183,9 +183,6 @@ function SearchPage() {
     setRaw(suggestion.mainText);
     setQ(suggestion.mainText);
     setShowAutocomplete(false);
-    
-    // Store suggestion in session storage for reference
-    sessionStorage.setItem("searchSuggestion", JSON.stringify(suggestion));
   }, []);
 
   // Handle search submit (Enter key)
