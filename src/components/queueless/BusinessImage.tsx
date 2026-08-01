@@ -46,7 +46,7 @@ export const BusinessImage = memo(function BusinessImage({
   }, [src]);
 
   const handleError = useCallback(() => {
-    if (retryCount.current < MAX_RETRIES) {
+    if (currentSrc && retryCount.current < MAX_RETRIES) {
       retryCount.current++;
       console.log(`[BusinessImage] Retrying photo load (attempt ${retryCount.current + 1}/${MAX_RETRIES + 1})`);
       setLoadState("loading");
@@ -73,7 +73,7 @@ export const BusinessImage = memo(function BusinessImage({
   }, [src, loadState]);
 
   // Show emoji placeholder if no source or failed after retries
-  if (!src || loadState === "failed") {
+  if (!src || !currentSrc || loadState === "failed") {
     return (
       <div
         aria-hidden

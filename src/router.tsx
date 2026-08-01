@@ -9,8 +9,6 @@ import { routeTree } from "./routeTree.gen";
 const queryClientConfig: QueryClientConfig = {
   defaultOptions: {
     queries: {
-      // Don't refetch when window regains focus - stale data is acceptable for wait times
-      refetchOnFocus: false,
       // Don't refetch when network reconnects - let user manually refresh if needed
       refetchOnReconnect: false,
       // Don't refetch when window visibility changes

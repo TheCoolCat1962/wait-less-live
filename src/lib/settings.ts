@@ -122,7 +122,7 @@ export function useSettings() {
   const [syncing, setSyncing] = useState(false);
   const userIdRef = useRef<string | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clientRef = useRef<ReturnType<typeof createSupabaseClient> | null>(null);
+  const clientRef = useRef<ReturnType<typeof getSupabaseClient>>(null);
 
   // Initialize Supabase client
   useEffect(() => {
