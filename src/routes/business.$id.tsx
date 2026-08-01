@@ -163,17 +163,18 @@ function BusinessPage() {
           </p>
           
           {/* Confidence indicator */}
-          {business.currentMinutes != null && business.confidence && (
-            <div className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 ${confidenceConfig[business.confidence].bgColor}`}>
-              {(() => {
-                const Icon = confidenceConfig[business.confidence].icon;
-                return <Icon className={`size-4 ${confidenceConfig[business.confidence].color}`} />;
-              })()}
-              <span className={`text-xs font-bold ${confidenceConfig[business.confidence].color}`}>
-                {confidenceConfig[business.confidence].label}
-              </span>
-            </div>
-          )}
+          {business.currentMinutes != null && business.confidence && (() => {
+            const conf = confidenceConfig[business.confidence as ConfidenceLevel];
+            const Icon = conf.icon;
+            return (
+              <div className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 ${conf.bgColor}`}>
+                <Icon className={`size-4 ${conf.color}`} />
+                <span className={`text-xs font-bold ${conf.color}`}>
+                  {conf.label}
+                </span>
+              </div>
+            );
+          })()}
           
           {business.currentMinutes != null && (
             <p className="mt-2 text-xs font-medium text-muted-foreground">
