@@ -431,35 +431,91 @@ type StoredReport = { minutes: number; created_at: string; source: string | null
 
 interface AggregationResult {
   current: number | null;
-  count: number;
+  count: number;           // Reports in current window (affects displayed wait)
+  historicalCount: number; // Reports in 24-hour window (for analytics)
   latest: string | null;
   latestMinutesAgo: number | null;
   trend: "up" | "down" | "stable";
   variance: number | null;
 }
 
+// Configuration constants for wait time aggregation
+const REPORT_WINDOW_HOURS = 24;           // Reports older than this are ignored
+const REPORT_WINDOW_MS = REPORT_WINDOW_HOURS * 60 * 60 * 1000;
+const CURRENT_WAIT_HOURS = 2;             // Reports within this window affect "current" wait
+const CURRENT_WAIT_MS = CURRENT_WAIT_HOURS * 60 * 60 * 1000;
+const HALF_LIFE_HOURS = 6;                // Weight halves every 6 hours
+const HALF_LIFE_MS = HALF_LIFE_HOURS * 60 * 60 * 1000;
+
 // Weighted current wait: newer + timer reports weigh more; ignore obvious outliers.
+// Uses exponential decay over 24 hours with a 2-hour hard cutoff for "current" display.
 function aggregateReports(reports: StoredReport[]) {
-  if (!reports.length) return { current: null as number | null, count: 0, latest: null as string | null, latestMinutesAgo: null, trend: "stable" as "up" | "down" | "stable", variance: null };
+  if (!reports.length) return {
+    current: null as number | null,
+    count: 0,
+    historicalCount: 0,
+    latest: null as string | null,
+    latestMinutesAgo: null,
+    trend: "stable" as const,
+    variance: null
+  };
 
   const now = Date.now();
-  // Only reports within the last 90 minutes count as "current".
-  const recent = reports.filter((r) => now - new Date(r.created_at).getTime() <= 90 * 60_000);
-  if (!recent.length) return { current: null, count: 0, latest: null, latestMinutesAgo: null, trend: "stable" as const, variance: null };
+  
+  // Only include reports within the 24-hour window
+  const withinWindow = reports.filter((r) => now - new Date(r.created_at).getTime() <= REPORT_WINDOW_MS);
+  if (!withinWindow.length) return {
+    current: null,
+    count: 0,
+    historicalCount: 0,
+    latest: null,
+    latestMinutesAgo: null,
+    trend: "stable" as const,
+    variance: null
+  };
 
-  // Outlier removal: drop values >2.5x the median.
-  const sortedMins = [...recent.map((r) => r.minutes)].sort((a, b) => a - b);
+  // For "current" wait, only use reports from the last 2 hours
+  const currentWindow = withinWindow.filter((r) => now - new Date(r.created_at).getTime() <= CURRENT_WAIT_MS);
+  
+  // If no recent reports, report count is 0 but we track historical count
+  if (!currentWindow.length) {
+    const latestReport = withinWindow.reduce((a, b) => (a.created_at > b.created_at ? a : b));
+    const latestMinutesAgo = (now - new Date(latestReport.created_at).getTime()) / 60_000;
+    return {
+      current: null,
+      count: 0, // No current reports
+      historicalCount: withinWindow.length,
+      latest: latestReport.created_at,
+      latestMinutesAgo,
+      trend: "stable" as const,
+      variance: null
+    };
+  }
+
+  // Outlier removal: drop values >2.5x the median (from current window only).
+  const sortedMins = [...currentWindow.map((r) => r.minutes)].sort((a, b) => a - b);
   const median = sortedMins[Math.floor(sortedMins.length / 2)];
-  const kept = recent.filter((r) => median === 0 || r.minutes <= median * 2.5 + 5);
+  const kept = currentWindow.filter((r) => median === 0 || r.minutes <= median * 2.5 + 5);
 
+  // Calculate weighted average with exponential decay
+  // Weight halves every HALF_LIFE_HOURS (6 hours by default)
   let weightSum = 0;
   let weighted = 0;
   for (const r of kept) {
-    const ageMin = Math.max(0, (now - new Date(r.created_at).getTime()) / 60_000);
-    // Recency weight: 1.0 at 0m, ~0.5 at 30m, ~0.1 at 90m
-    const recencyW = Math.exp(-ageMin / 30);
-    const sourceW = r.source === "timer" ? 1.5 : r.source === "exact" ? 1.2 : 1;
-    const w = recencyW * sourceW;
+    const ageMs = Math.max(0, now - new Date(r.created_at).getTime());
+    const ageHours = ageMs / (60 * 60 * 1000);
+    
+    // Exponential decay: weight = 2^(-ageHours / halfLifeHours)
+    // At 0 hours: weight = 1
+    // At 6 hours: weight = 0.5
+    // At 12 hours: weight = 0.25
+    // At 24 hours: weight = 0.0625
+    const recencyWeight = Math.pow(2, -ageHours / HALF_LIFE_HOURS);
+    
+    // Source weight: timer reports are more accurate
+    const sourceWeight = r.source === "timer" ? 1.5 : r.source === "exact" ? 1.2 : 1;
+    
+    const w = recencyWeight * sourceWeight;
     weighted += r.minutes * w;
     weightSum += w;
   }
@@ -474,13 +530,16 @@ function aggregateReports(reports: StoredReport[]) {
     variance = Math.round(Math.sqrt(avgSquaredDiff));
   }
 
-  // Trend: compare avg of newest half vs older half (chronological).
+  // Trend: compare avg of newest quarter vs oldest quarter (within 2-hour window)
   const chrono = [...kept].sort((a, b) => a.created_at.localeCompare(b.created_at));
   let trend: "up" | "down" | "stable" = "stable";
-  if (chrono.length >= 3) {
-    const half = Math.floor(chrono.length / 2);
-    const oldAvg = chrono.slice(0, half).reduce((s, r) => s + r.minutes, 0) / half;
-    const newAvg = chrono.slice(-half).reduce((s, r) => s + r.minutes, 0) / half;
+  if (chrono.length >= 4) {
+    const quarterLen = Math.max(1, Math.floor(chrono.length / 4));
+    const oldestQuarter = chrono.slice(0, quarterLen);
+    const newestQuarter = chrono.slice(-quarterLen);
+    const oldAvg = oldestQuarter.reduce((s, r) => s + r.minutes, 0) / oldestQuarter.length;
+    const newAvg = newestQuarter.reduce((s, r) => s + r.minutes, 0) / newestQuarter.length;
+    // Require a meaningful difference (4+ minutes) to show trend
     if (newAvg - oldAvg >= 4) trend = "up";
     else if (oldAvg - newAvg >= 4) trend = "down";
   }
@@ -489,7 +548,15 @@ function aggregateReports(reports: StoredReport[]) {
   const latest = latestReport.created_at;
   const latestMinutesAgo = Math.max(0, (now - new Date(latest).getTime()) / 60_000);
   
-  return { current, count: kept.length, latest, latestMinutesAgo, trend, variance };
+  return {
+    current,
+    count: kept.length,
+    historicalCount: withinWindow.length,
+    latest,
+    latestMinutesAgo,
+    trend,
+    variance
+  };
 }
 
 // Attach aggregated live-wait data (from recent wait_reports) to business rows.
@@ -499,11 +566,12 @@ async function withAggregatedWaits<T extends { id: string }>(
   stored: T[],
 ) {
   const ids = stored.map((b) => b.id);
+  // Fetch reports from the last 24 hours (matches REPORT_WINDOW_HOURS)
   const { data: reportsRaw } = await supabase
     .from("wait_reports")
     .select("business_id, minutes, created_at, source")
     .in("business_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
-    .gte("created_at", new Date(Date.now() - 90 * 60 * 1000).toISOString())
+    .gte("created_at", new Date(Date.now() - REPORT_WINDOW_MS).toISOString())
     .order("created_at", { ascending: false });
   const reports = (reportsRaw ?? []) as Array<{
     business_id: string;
@@ -534,11 +602,11 @@ async function withAggregatedWaits<T extends { id: string }>(
       else if (agg.count >= 3) score += 3;
       else if (agg.count >= 2) score += 2;
       else score += 1;
-      // Recency scoring
+      // Recency scoring (adjusted for 2-hour current window)
       if (updatedMinutesAgo !== null) {
         if (updatedMinutesAgo <= 5) score += 3;
         else if (updatedMinutesAgo <= 15) score += 2;
-        else if (updatedMinutesAgo <= 30) score += 1;
+        else if (updatedMinutesAgo <= 60) score += 1; // Extended to 1 hour
       }
       // Agreement scoring
       if (agg.variance !== null) {
@@ -1090,5 +1158,295 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     );
 
     return withAggregatedWaits(supabase, stored);
+  });
+
+// ---------------------------------------------------------------------------
+// Autocomplete suggestions using Google Places Autocomplete API
+// Provides fast, live suggestions as users type
+// ---------------------------------------------------------------------------
+
+export interface AutocompleteSuggestion {
+  placeId: string;
+  description: string;
+  mainText: string;
+  secondaryText: string;
+  types: string[];
+  matchedSubstrings: Array<{ offset: number; length: number }>;
+}
+
+export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
+  .inputValidator((data: { query: string; lat?: number; lng?: number }) => {
+    const query = String(data?.query ?? "").trim();
+    if (query.length < 2 || query.length > 100) {
+      return { query: "", lat: 0, lng: 0 };
+    }
+    const lat = Number.isFinite(Number(data?.lat)) ? Number(data!.lat) : NOLA_CENTER.lat;
+    const lng = Number.isFinite(Number(data?.lng)) ? Number(data!.lng) : NOLA_CENTER.lng;
+    return { query, lat, lng };
+  })
+  .handler(async ({ data }) => {
+    if (!data.query) return [];
+
+    // First, try to find matches in cached businesses (for instant results)
+    const supabase = getSupabase();
+    const queryLower = data.query.toLowerCase();
+    
+    const { data: cachedBusinesses } = await supabase
+      .from("businesses")
+      .select("id, google_place_id, name, address, city, state, category, lat, lng, updated_at")
+      .ilike("name", `%${data.query}%`)
+      .gte("lat", NOLA_BOUNDS.south)
+      .lte("lat", NOLA_BOUNDS.north)
+      .gte("lng", NOLA_BOUNDS.west)
+      .lte("lng", NOLA_BOUNDS.east)
+      .limit(5);
+
+    const cachedFresh = ((cachedBusinesses ?? []) as CachedBusinessRow[]).filter(
+      (b) => Date.now() - new Date(b.updated_at).getTime() < BUSINESS_CACHE_TTL_MS,
+    );
+
+    // Check if cached results match well (exact or prefix match)
+    const cachedSuggestions: AutocompleteSuggestion[] = cachedFresh
+      .filter((b) => {
+        const nameLower = b.name.toLowerCase();
+        return nameLower.includes(queryLower) && isInNolaMetro(b.lat, b.lng);
+      })
+      .slice(0, 3)
+      .map((b) => ({
+        placeId: b.google_place_id,
+        description: `${b.name}, ${b.city || b.address || ""}`,
+        mainText: b.name,
+        secondaryText: b.city || b.address || "",
+        types: [b.category],
+        matchedSubstrings: [{ offset: 0, length: data.query.length }],
+      }));
+
+    // If we have good cached matches, return them immediately
+    const hasExactMatch = cachedFresh.some(
+      (b) => b.name.toLowerCase().startsWith(queryLower)
+    );
+    
+    if (hasExactMatch && cachedSuggestions.length > 0) {
+      return cachedSuggestions;
+    }
+
+    // Call Google Places Autocomplete API
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_API_KEY is not configured");
+      return cachedSuggestions; // Fall back to cached results only
+    }
+    
+    const params = new URLSearchParams({
+      input: data.query,
+      key: apiKey,
+      types: "establishment",
+      components: "country:us",
+    });
+
+    // Add location bias
+    if (data.lat && data.lng) {
+      params.set("location", `${data.lat},${data.lng}`);
+      params.set("radius", "40000"); // ~25 miles
+    }
+
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
+    );
+
+    if (!res.ok) {
+      console.error("Autocomplete API error:", res.status);
+      return cachedSuggestions; // Fall back to cached results
+    }
+
+    const json = await res.json() as {
+      predictions?: Array<{
+        place_id: string;
+        description: string;
+        structured_formatting: {
+          main_text: string;
+          main_text_matched_substrings: Array<{ offset: number; length: number }>;
+          secondary_text: string;
+        };
+        types: string[];
+        terms?: Array<{ value: string }>;
+      }>;
+      status: string;
+    };
+
+    if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
+      console.error("Autocomplete status:", json.status);
+      return cachedSuggestions;
+    }
+
+    const suggestions: AutocompleteSuggestion[] = (json.predictions ?? [])
+      .filter((p) => {
+        // Filter out generic/suspicious predictions
+        const types = p.types ?? [];
+        return !types.includes("country") && 
+               !types.includes("administrative_area_level_1") &&
+               !types.includes("locality") &&
+               !types.includes("postal_code");
+      })
+      .slice(0, 5)
+      .map((p) => ({
+        placeId: p.place_id,
+        description: p.description,
+        mainText: p.structured_formatting?.main_text ?? p.description,
+        secondaryText: p.structured_formatting?.secondary_text ?? "",
+        types: p.types ?? [],
+        matchedSubstrings: p.structured_formatting?.main_text_matched_substrings ?? [],
+      }));
+
+    // Merge cached results with API results, prioritizing cached (they have wait times)
+    const merged = [...cachedSuggestions];
+    for (const s of suggestions) {
+      if (!merged.some((m) => m.placeId === s.placeId)) {
+        merged.push(s);
+      }
+    }
+
+    return merged.slice(0, 5);
+  });
+
+// ---------------------------------------------------------------------------
+// Get place details by place ID (for autocomplete selection)
+// ---------------------------------------------------------------------------
+
+export interface PlaceDetails {
+  placeId: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  lat: number;
+  lng: number;
+  category: string;
+  phone: string | null;
+  logoUrl: string | null;
+}
+
+export const getPlaceDetails = createServerFn({ method: "POST" })
+  .inputValidator((data: { placeId: string }) => {
+    const placeId = String(data?.placeId ?? "").trim();
+    if (!placeId) throw new Error("Place ID is required");
+    return { placeId };
+  })
+  .handler(async ({ data }) => {
+    const supabase = getSupabase();
+
+    // First check if we have this business cached
+    const { data: cached } = await supabase
+      .from("businesses")
+      .select("id, google_place_id, name, address, city, state, zip, lat, lng, category, primary_type, phone, logo_url")
+      .eq("google_place_id", data.placeId)
+      .single();
+
+    if (cached) {
+      const cat = pickCategory(cached.primary_type, [cached.category]);
+      return {
+        placeId: cached.google_place_id,
+        name: cached.name,
+        address: cached.address,
+        city: cached.city,
+        state: cached.state,
+        zip: cached.zip,
+        lat: cached.lat,
+        lng: cached.lng,
+        category: cached.category,
+        phone: cached.phone,
+        logoUrl: cached.logo_url,
+      };
+    }
+
+    // Fetch from Google Places Details API
+    const res = await fetch(
+      `${GATEWAY_URL}/places/v1/places/${data.placeId}`,
+      {
+        headers: gwHeaders({
+          "X-Goog-FieldMask":
+            "id,displayName,formattedAddress,location,types,primaryType,addressComponents,internationalPhoneNumber,photos",
+        }),
+      },
+    );
+
+    if (!res.ok) await handleGwError(res);
+    const json = await res.json() as {
+      id: string;
+      displayName?: { text: string };
+      formattedAddress?: string;
+      location?: { latitude: number; longitude: number };
+      types?: string[];
+      primaryType?: string;
+      addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
+      internationalPhoneNumber?: string;
+      photos?: Array<{ name: string }>;
+    };
+
+    if (!json.id || !json.location || !json.displayName?.text) {
+      throw new Error("Invalid place data received");
+    }
+
+    const comps = (json.addressComponents ?? []).map((c) => ({
+      types: c.types,
+      short_name: c.shortText,
+      long_name: c.longText,
+    }));
+
+    const cat = pickCategory(json.primaryType, json.types);
+
+    // Validate coordinates are in allowed region before caching
+    if (!isInNolaMetro(json.location.latitude, json.location.longitude)) {
+      throw new Error(
+        `Place is outside the supported region (NOLA metro). lat=${json.location.latitude}, lng=${json.location.longitude}`,
+      );
+    }
+
+    // Upsert to cache
+    const row = {
+      google_place_id: json.id,
+      name: json.displayName.text,
+      address: json.formattedAddress ?? null,
+      city:
+        pickAddressComponent(comps, "locality") ??
+        pickAddressComponent(comps, "sublocality") ??
+        pickAddressComponent(comps, "postal_town"),
+      state: pickAddressComponent(comps, "administrative_area_level_1", true),
+      zip: pickAddressComponent(comps, "postal_code"),
+      lat: json.location.latitude,
+      lng: json.location.longitude,
+      category: cat.label,
+      primary_type: cat.primary,
+      phone: json.internationalPhoneNumber ?? null,
+      logo_url: buildPhotoUrl(json.photos?.[0]?.name),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: upsertErr } = await supabase
+      .from("businesses")
+      .upsert(row, { onConflict: "google_place_id" });
+    if (upsertErr) console.error("upsert failed:", upsertErr);
+
+    // Get the stored record with ID
+    const { data: stored } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("google_place_id", data.placeId)
+      .single();
+
+    return {
+      placeId: json.id,
+      name: json.displayName.text,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      zip: row.zip,
+      lat: row.lat,
+      lng: row.lng,
+      category: row.category,
+      phone: row.phone,
+      logoUrl: row.logo_url,
+    };
   });
 
