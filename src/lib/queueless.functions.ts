@@ -1320,6 +1320,10 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
   .inputValidator((data: { placeId: string }) => {
     const placeId = String(data?.placeId ?? "").trim();
     if (!placeId) throw new Error("Place ID is required");
+    // Reject path/URL delimiters that could cause path traversal or injection
+    if (/[\/..?#]/.test(placeId)) {
+      throw new Error("Invalid place ID format");
+    }
     return { placeId };
   })
   .handler(async ({ data }) => {
@@ -1351,7 +1355,7 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
 
     // Fetch from Google Places Details API
     const res = await fetch(
-      `${GATEWAY_URL}/places/v1/places/${data.placeId}`,
+      `${GATEWAY_URL}/places/v1/places/${encodeURIComponent(data.placeId)}`,
       {
         headers: gwHeaders({
           "X-Goog-FieldMask":
