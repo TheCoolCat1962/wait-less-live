@@ -104,7 +104,7 @@ export function ReportSheet() {
         data: {
           businessId: activeBizId,
           minutes,
-          reporterKey: reporterKey || undefined,
+          reporterKey: reporterKey ?? "",
           source,
           comment: comment.trim() || undefined,
         },

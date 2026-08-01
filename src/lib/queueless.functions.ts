@@ -798,7 +798,8 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     });
 
     if (rows.length) {
-      const { error } = await supabase
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error } = await (supabaseAdmin as any)
         .from("businesses")
         .upsert(rows, { onConflict: "google_place_id" });
       if (error) console.error("upsert businesses failed:", error);
@@ -994,7 +995,10 @@ export const submitWaitReport = createServerFn({ method: "POST" })
       throw new Error("Suspicious pattern detected. Please vary your wait time reports.");
     }
     
-    const { error } = await supabase.from("wait_reports").insert({
+    // Inserted with the server-only admin client after the validation and
+    // rate-limit checks above; the browser cannot write this table directly.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await (supabaseAdmin as any).from("wait_reports").insert({
       business_id: data.businessId,
       minutes: data.minutes,
       reporter_key: reporterKey,
@@ -1137,7 +1141,8 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
     });
 
     if (rows.length) {
-      const { error } = await supabase
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error } = await (supabaseAdmin as any)
         .from("businesses")
         .upsert(rows, { onConflict: "google_place_id" });
       if (error) console.error("upsert businesses failed:", error);
@@ -1217,7 +1222,7 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
         description: `${b.name}, ${b.city || b.address || ""}`,
         mainText: b.name,
         secondaryText: b.city || b.address || "",
-        types: [b.category],
+        types: b.category ? [b.category] : [],
         matchedSubstrings: [{ offset: 0, length: data.query.length }],
       }));
 
@@ -1423,7 +1428,10 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
       updated_at: new Date().toISOString(),
     };
 
-    const { error: upsertErr } = await supabase
+    // Writes go through the trusted server-only admin client; RLS blocks
+    // anonymous inserts/updates on `businesses`.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error: upsertErr } = await (supabaseAdmin as any)
       .from("businesses")
       .upsert(row, { onConflict: "google_place_id" });
     if (upsertErr) console.error("upsert failed:", upsertErr);

@@ -169,10 +169,10 @@ function AuthCallbackPage() {
           console.error("[AuthCallback] Session check error:", sessionError);
         }
         
-        if (sessionData.session && sessionData.user) {
+        if (sessionData.session?.user) {
           console.log("[AuthCallback] Existing session found:", {
-            userEmail: sessionData.user.email,
-            emailConfirmed: !!sessionData.user.email_confirmed_at
+            userEmail: sessionData.session.user.email,
+            emailConfirmed: !!sessionData.session.user.email_confirmed_at
           });
           
           setStatus("success");
