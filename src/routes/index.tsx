@@ -37,15 +37,39 @@ function HomePage() {
     return lat >= 29.82 && lat <= 30.15 && lng >= -90.35 && lng <= -89.55;
   }, [location?.coords.lat, location?.coords.lng]);
 
+  // DEBUG: Log location state changes
+  console.log("[HomePage] Render:", {
+    status,
+    hasLocation: !!location,
+    locationCoords: location?.coords,
+    locationLabel: location?.label,
+    inNola,
+    queryEnabled: !!location && inNola,
+  });
+
   const nearbyQuery = useQuery({
     // Include location version in key to force refetch when location changes
     queryKey: ["nearby", location?.coords.lat, location?.coords.lng, locationVersionRef.current],
     enabled: !!location && inNola,
-    queryFn: () =>
-      fetchNearbyBusinesses({
+    queryFn: () => {
+      console.log("[HomePage] Query executing with:", {
+        lat: location!.coords.lat,
+        lng: location!.coords.lng,
+      });
+      return fetchNearbyBusinesses({
         data: { lat: location!.coords.lat, lng: location!.coords.lng, radiusMiles: 25 },
-      }),
+      });
+    },
     staleTime: 60_000,
+  });
+
+  // DEBUG: Log query state transitions
+  console.log("[HomePage] Query state:", {
+    isLoading: nearbyQuery.isLoading,
+    isFetching: nearbyQuery.isFetching,
+    isError: nearbyQuery.isError,
+    dataLength: nearbyQuery.data?.length,
+    error: nearbyQuery.error?.message,
   });
 
   // Memoize sorted businesses to avoid recalculating on every render
