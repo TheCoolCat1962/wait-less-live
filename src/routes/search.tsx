@@ -11,7 +11,6 @@ import {
   fetchNearbyBusinesses,
   searchBusinessesByText,
   getAutocompleteSuggestions,
-  getPlaceDetails,
   type AutocompleteSuggestion,
 } from "@/lib/queueless.functions";
 
@@ -67,11 +66,11 @@ function SearchPage() {
       
       const trimmed = raw.trim();
       setQ(trimmed);
-      // Show autocomplete when query is 3+ characters, but not if a suggestion was just selected
-      setShowAutocomplete(trimmed.length >= 3);
+      // Show autocomplete when query is 3+ characters, but not if a suggestion is selected
+      setShowAutocomplete(!selectedSuggestion && trimmed.length >= 3);
     }, 250);
     return () => clearTimeout(t);
-  }, [raw]);
+  }, [raw, selectedSuggestion]);
 
   // Autocomplete query - enabled when 3+ chars and no selected suggestion
   const autocompleteQuery = useQuery({
@@ -120,28 +119,6 @@ function SearchPage() {
 
   // Determine which query to show
   const activeQuery = q.length >= 2 ? textQuery : nearbyQuery;
-  
-  // When autocomplete suggestion is selected, fetch that business
-  const selectedBusinessQuery = useQuery({
-    queryKey: ["selectedBusiness", selectedSuggestion?.placeId],
-    enabled: !!selectedSuggestion,
-    queryFn: async () => {
-      if (!selectedSuggestion) return null;
-      const details = await getPlaceDetails({ data: { placeId: selectedSuggestion.placeId } });
-      // Navigate to the business page
-      // We need to get the business ID from the database
-      return details;
-    },
-  });
-
-  // Navigate to selected business
-  useEffect(() => {
-    if (selectedSuggestion) {
-      // Store the suggestion in session storage and navigate
-      sessionStorage.setItem("selectedBusiness", JSON.stringify(selectedSuggestion));
-      // The navigation will happen when user confirms selection
-    }
-  }, [selectedSuggestion]);
 
   // Build list of businesses to show
   const list: BusinessWithWait[] = useMemo(() => {
@@ -206,9 +183,6 @@ function SearchPage() {
     setRaw(suggestion.mainText);
     setQ(suggestion.mainText);
     setShowAutocomplete(false);
-    
-    // Store suggestion in session storage for reference
-    sessionStorage.setItem("searchSuggestion", JSON.stringify(suggestion));
   }, []);
 
   // Handle search submit (Enter key)
@@ -265,9 +239,16 @@ function SearchPage() {
           <input
             ref={inputRef}
             value={raw}
-            onChange={(e) => setRaw(e.target.value)}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              setRaw(newValue);
+              // If user edits after selecting a suggestion, clear the selection
+              if (selectedSuggestion && newValue !== selectedSuggestion.mainText) {
+                setSelectedSuggestion(null);
+              }
+            }}
             onKeyDown={handleKeyDown}
-            onFocus={() => raw.length >= 3 && setShowAutocomplete(true)}
+            onFocus={() => !selectedSuggestion && raw.length >= 3 && setShowAutocomplete(true)}
             placeholder="Business name, category, or neighborhood…"
             className="w-full rounded-xl bg-surface-muted py-3 pl-10 pr-10 text-sm font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand"
             autoComplete="off"
