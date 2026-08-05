@@ -34,17 +34,23 @@ function SearchPage() {
   const justSelectedRef = useRef(false);
 
   // Track location version to detect changes and force query refetch
+  // Use useEffect to avoid mutating state during render
   const locationVersionRef = useRef(0);
-  const prevLocationRef = useRef<typeof location>(null);
+  const prevLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  // Detect when location actually changes (not just re-renders)
-  if (prevLocationRef.current !== location) {
-    if (prevLocationRef.current?.coords.lat !== location?.coords.lat ||
-        prevLocationRef.current?.coords.lng !== location?.coords.lng) {
-      locationVersionRef.current++;
+  // Use useEffect to detect when location actually changes (not just re-renders)
+  // This avoids React Strict Mode double-render issues
+  useEffect(() => {
+    const currentCoords = location?.coords ?? null;
+    const prevCoords = prevLocationRef.current;
+    
+    if (currentCoords && prevCoords) {
+      if (currentCoords.lat !== prevCoords.lat || currentCoords.lng !== prevCoords.lng) {
+        locationVersionRef.current++;
+      }
     }
-    prevLocationRef.current = location;
-  }
+    prevLocationRef.current = currentCoords;
+  }, [location?.coords.lat, location?.coords.lng]);
 
   // NOLA metro bounds (kept in sync with server). The nearby list is only
   // available in the launch region; name search stays available everywhere
