@@ -998,14 +998,32 @@ export const submitWaitReport = createServerFn({ method: "POST" })
     // Inserted with the server-only admin client after the validation and
     // rate-limit checks above; the browser cannot write this table directly.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await (supabaseAdmin as any).from("wait_reports").insert({
-      business_id: data.businessId,
-      minutes: data.minutes,
-      reporter_key: reporterKey,
-      source: data.source,
-      comment: data.comment,
-    });
+    const { data: insertData, error } = await (supabaseAdmin as any)
+      .from("wait_reports")
+      .insert({
+        business_id: data.businessId,
+        minutes: data.minutes,
+        reporter_key: reporterKey,
+        source: data.source,
+        comment: data.comment,
+      })
+      .select("id")
+      .single();
+    
     if (error) throw new Error(error.message);
+    
+    // After successful report submission, check for wait alerts that should trigger
+    // This is async and non-blocking - we don't wait for it to complete
+    const reportId = insertData?.id;
+    if (reportId) {
+      // Use setImmediate to ensure alerts are checked without blocking the response
+      setImmediate(() => {
+        checkWaitAlerts(data.businessId, data.minutes, reportId).catch((err) => {
+          console.error("[submitWaitReport] Alert check failed:", err);
+        });
+      });
+    }
+    
     return { ok: true };
   });
 
@@ -1457,4 +1475,328 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
       logoUrl: row.logo_url,
     };
   });
+
+// ---------------------------------------------------------------------------
+// WAIT TIME ALERTS
+// Users can set alerts to be notified when wait times drop below a threshold
+// ---------------------------------------------------------------------------
+
+// Wait alert data structure
+export interface WaitAlert {
+  id: string;
+  businessId: string;
+  thresholdMinutes: number;
+  enabled: boolean;
+  notifiedAt: string | null;
+  createdAt: string;
+}
+
+// Create or update a wait alert for a user
+export const createOrUpdateWaitAlert = createServerFn({ method: "POST" })
+  .inputValidator((data: {
+    businessId: string;
+    thresholdMinutes: number;
+    userId?: string; // Optional for authenticated users
+  }) => {
+    const businessId = String(data?.businessId ?? "");
+    const thresholdMinutes = Number(data?.thresholdMinutes ?? 0);
+    
+    if (!/^[0-9a-f-]{36}$/i.test(businessId)) {
+      throw new Error("Invalid business ID");
+    }
+    if (!Number.isFinite(thresholdMinutes) || thresholdMinutes < 1 || thresholdMinutes > 240) {
+      throw new Error("Threshold must be between 1 and 240 minutes");
+    }
+    
+    return {
+      businessId,
+      thresholdMinutes: Math.round(thresholdMinutes),
+      userId: data?.userId ? String(data.userId).slice(0, 36) : null,
+    };
+  })
+  .handler(async ({ data }) => {
+    // For this MVP, we use reporterKey instead of auth user_id
+    // The client will send a user identifier
+    const reporterKey = data.userId;
+    
+    if (!reporterKey) {
+      throw new Error("User identification required for alerts");
+    }
+    
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    
+    // Upsert the alert (create or update)
+    const { data: alert, error } = await (supabaseAdmin as any)
+      .from("wait_alerts")
+      .upsert({
+        user_id: reporterKey, // Using reporter key as identifier
+        business_id: data.businessId,
+        threshold_minutes: data.thresholdMinutes,
+        enabled: true,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: "user_id,business_id",
+        returning: "representation",
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error("[Alert] Error creating alert:", error);
+      throw new Error("Failed to create alert");
+    }
+    
+    return {
+      id: alert.id,
+      businessId: alert.business_id,
+      thresholdMinutes: alert.threshold_minutes,
+      enabled: alert.enabled,
+      notifiedAt: alert.notified_at,
+      createdAt: alert.created_at,
+    } as WaitAlert;
+  });
+
+// Delete a wait alert
+export const deleteWaitAlert = createServerFn({ method: "POST" })
+  .inputValidator((data: {
+    alertId: string;
+    userId?: string;
+  }) => {
+    const alertId = String(data?.alertId ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(alertId)) {
+      throw new Error("Invalid alert ID");
+    }
+    return { alertId, userId: data?.userId ? String(data.userId).slice(0, 36) : null };
+  })
+  .handler(async ({ data }) => {
+    const reporterKey = data.userId;
+    if (!reporterKey) {
+      throw new Error("User identification required");
+    }
+    
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    
+    // Delete the alert (only if it belongs to this user)
+    const { error } = await (supabaseAdmin as any)
+      .from("wait_alerts")
+      .delete()
+      .eq("id", data.alertId)
+      .eq("user_id", reporterKey);
+    
+    if (error) {
+      console.error("[Alert] Error deleting alert:", error);
+      throw new Error("Failed to delete alert");
+    }
+    
+    return { success: true };
+  });
+
+// Toggle alert enabled status
+export const toggleWaitAlert = createServerFn({ method: "POST" })
+  .inputValidator((data: {
+    alertId: string;
+    enabled: boolean;
+    userId?: string;
+  }) => {
+    const alertId = String(data?.alertId ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(alertId)) {
+      throw new Error("Invalid alert ID");
+    }
+    return {
+      alertId,
+      enabled: Boolean(data?.enabled),
+      userId: data?.userId ? String(data.userId).slice(0, 36) : null,
+    };
+  })
+  .handler(async ({ data }) => {
+    const reporterKey = data.userId;
+    if (!reporterKey) {
+      throw new Error("User identification required");
+    }
+    
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    
+    const { data: alert, error } = await (supabaseAdmin as any)
+      .from("wait_alerts")
+      .update({
+        enabled: data.enabled,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", data.alertId)
+      .eq("user_id", reporterKey)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error("[Alert] Error toggling alert:", error);
+      throw new Error("Failed to update alert");
+    }
+    
+    return {
+      id: alert.id,
+      enabled: alert.enabled,
+    };
+  });
+
+// Get alert for a specific business (for current user)
+export const getWaitAlertForBusiness = createServerFn({ method: "POST" })
+  .inputValidator((data: {
+    businessId: string;
+    userId?: string;
+  }) => {
+    const businessId = String(data?.businessId ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(businessId)) {
+      throw new Error("Invalid business ID");
+    }
+    return { businessId, userId: data?.userId ? String(data.userId).slice(0, 36) : null };
+  })
+  .handler(async ({ data }) => {
+    const reporterKey = data.userId;
+    if (!reporterKey) {
+      return null; // Anonymous users have no alerts
+    }
+    
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    
+    const { data: alert, error } = await (supabaseAdmin as any)
+      .from("wait_alerts")
+      .select("*")
+      .eq("business_id", data.businessId)
+      .eq("user_id", reporterKey)
+      .maybeSingle();
+    
+    if (error && error.code !== "PGRST116") { // Ignore "no rows" error
+      console.error("[Alert] Error fetching alert:", error);
+    }
+    
+    if (!alert) return null;
+    
+    return {
+      id: alert.id,
+      businessId: alert.business_id,
+      thresholdMinutes: alert.threshold_minutes,
+      enabled: alert.enabled,
+      notifiedAt: alert.notified_at,
+      createdAt: alert.created_at,
+    } as WaitAlert;
+  });
+
+// Get all alerts for current user
+export const getUserWaitAlerts = createServerFn({ method: "POST" })
+  .inputValidator((data: {
+    userId?: string;
+  }) => {
+    return { userId: data?.userId ? String(data.userId).slice(0, 36) : null };
+  })
+  .handler(async ({ data }) => {
+    const reporterKey = data.userId;
+    if (!reporterKey) {
+      return [];
+    }
+    
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    
+    const { data: alerts, error } = await (supabaseAdmin as any)
+      .from("wait_alerts")
+      .select(`
+        *,
+        business:businesses(id, name, category, logo_url)
+      `)
+      .eq("user_id", reporterKey)
+      .eq("enabled", true)
+      .order("created_at", { ascending: false });
+    
+    if (error) {
+      console.error("[Alert] Error fetching user alerts:", error);
+      return [];
+    }
+    
+    return (alerts ?? []).map((alert: any) => ({
+      id: alert.id,
+      businessId: alert.business_id,
+      thresholdMinutes: alert.threshold_minutes,
+      enabled: alert.enabled,
+      notifiedAt: alert.notified_at,
+      createdAt: alert.created_at,
+      business: alert.business ? {
+        id: alert.business.id,
+        name: alert.business.name,
+        category: alert.business.category,
+        logoUrl: alert.business.logo_url,
+      } : null,
+    }));
+  });
+
+// Check and trigger alerts when a wait report is submitted
+// This is called internally after submitWaitReport
+export async function checkWaitAlerts(
+  businessId: string,
+  currentWaitMinutes: number,
+  waitReportId: string
+): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  
+  // Find all enabled alerts for this business where:
+  // 1. The threshold is >= current wait (notify when wait drops TO or BELOW threshold)
+  // 2. We haven't notified in the last 30 minutes (prevent spam)
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  
+  const { data: alerts, error } = await (supabaseAdmin as any)
+    .from("wait_alerts")
+    .select("*")
+    .eq("business_id", businessId)
+    .eq("enabled", true)
+    .lte("threshold_minutes", currentWaitMinutes) // Threshold must be >= current wait
+    .or(`notified_at.is.null,notified_at.lt.${thirtyMinutesAgo}`); // Not notified recently
+  
+  if (error) {
+    console.error("[Alert] Error checking alerts:", error);
+    return;
+  }
+  
+  if (!alerts || alerts.length === 0) return;
+  
+  // Get business info for the notification
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id, name")
+    .eq("id", businessId)
+    .single();
+  
+  // Process each alert
+  for (const alert of alerts) {
+    try {
+      // Create notification record
+      await (supabaseAdmin as any)
+        .from("wait_alert_notifications")
+        .insert({
+          alert_id: alert.id,
+          wait_report_id: waitReportId,
+          wait_minutes: currentWaitMinutes,
+          delivered: true,
+        });
+      
+      // Create in-app notification
+      await (supabaseAdmin as any)
+        .from("notifications")
+        .insert({
+          user_id: alert.user_id,
+          type: "wait_alert",
+          title: "Wait time dropped!",
+          body: `${business?.name ?? 'A business'} now has a ${currentWaitMinutes}-minute wait (below your ${alert.threshold_minutes}-minute threshold)`,
+          business_id: businessId,
+        });
+      
+      // Update the alert's notified_at timestamp
+      await (supabaseAdmin as any)
+        .from("wait_alerts")
+        .update({ notified_at: new Date().toISOString() })
+        .eq("id", alert.id);
+      
+      console.log(`[Alert] Triggered alert ${alert.id} for user ${alert.user_id}`);
+    } catch (err) {
+      console.error(`[Alert] Error processing alert ${alert.id}:`, err);
+    }
+  }
+}
 
