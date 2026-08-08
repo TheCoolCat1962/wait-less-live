@@ -1,12 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clock, MapPin, Star, Users, Loader2, Plus, Timer, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Clock, MapPin, Star, Users, Loader2, Plus, Timer, Shield, ShieldAlert, ShieldCheck, Bell } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
 import { BusinessImage } from "@/components/queueless/BusinessImage";
 import { WaitBadge } from "@/components/queueless/WaitBadge";
+import { AlertSheet } from "@/components/queueless/AlertSheet";
 import { crowdLabel, formatUpdated, toneFromMinutes, trendLabel, type ConfidenceLevel } from "@/lib/queueless-data";
 import { useFavorites } from "@/lib/favorites";
 import { useReportSheet } from "@/components/queueless/ReportSheetContext";
+import { useAlertForBusiness } from "@/lib/alerts";
 import { getBusinessWithReports } from "@/lib/queueless.functions";
 
 export const Route = createFileRoute("/business/$id")({
@@ -73,6 +76,9 @@ function BusinessPage() {
   const { id } = Route.useParams();
   const { has, toggle } = useFavorites();
   const { open } = useReportSheet();
+  const { alert: businessAlert } = useAlertForBusiness(id);
+  const [showAlertSheet, setShowAlertSheet] = useState(false);
+  
   const q = useQuery({
     queryKey: ["business", id],
     queryFn: () => getBusinessWithReports({ data: { id } }),
@@ -104,6 +110,7 @@ function BusinessPage() {
   const fav = has(business.id);
   const tone = toneFromMinutes(business.currentMinutes);
   const trend = business.currentMinutes != null ? trendLabel(business.trend) : null;
+  const hasActiveAlert = businessAlert?.enabled ?? false;
 
   return (
     <AppShell>
@@ -112,13 +119,26 @@ function BusinessPage() {
           <ArrowLeft className="size-4" />
         </Link>
         <p className="truncate text-sm font-bold">{business.name}</p>
-        <button
-          onClick={() => toggle(business.id)}
-          aria-label={fav ? "Remove favorite" : "Add favorite"}
-          className="grid size-9 place-items-center rounded-full bg-surface-muted"
-        >
-          <Star className={`size-4 ${fav ? "fill-brand text-brand" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAlertSheet(true)}
+            aria-label={hasActiveAlert ? "Manage wait alert" : "Create wait alert"}
+            className={`grid size-9 place-items-center rounded-full transition-colors ${
+              hasActiveAlert 
+                ? "bg-brand/10 text-brand" 
+                : "bg-surface-muted text-muted-foreground"
+            }`}
+          >
+            <Bell className={`size-4 ${hasActiveAlert ? "fill-brand" : ""}`} />
+          </button>
+          <button
+            onClick={() => toggle(business.id)}
+            aria-label={fav ? "Remove favorite" : "Add favorite"}
+            className="grid size-9 place-items-center rounded-full bg-surface-muted"
+          >
+            <Star className={`size-4 ${fav ? "fill-brand text-brand" : ""}`} />
+          </button>
+        </div>
       </header>
 
       <div className="aspect-[16/9] w-full overflow-hidden bg-surface-muted">
@@ -301,6 +321,15 @@ function BusinessPage() {
           </div>
         </section>
       </main>
+
+      {/* Alert Sheet */}
+      <AlertSheet
+        isOpen={showAlertSheet}
+        onClose={() => setShowAlertSheet(false)}
+        businessId={business.id}
+        businessName={business.name}
+        currentWait={business.currentMinutes}
+      />
     </AppShell>
   );
 }
