@@ -23,39 +23,26 @@ function getSupabase() {
 }
 
 // ---------------------------------------------------------------------------
-// Google Maps Platform via connector gateway
+// Google Maps Platform — direct API calls (server-only key)
 // ---------------------------------------------------------------------------
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_maps";
+const PLACES_BASE = "https://places.googleapis.com/v1";
+const MAPS_BASE = "https://maps.googleapis.com";
 
-function gwHeaders(extra?: Record<string, string>) {
-  const lovableKey = process.env.LOVABLE_API_KEY;
-  const gmKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!lovableKey || !gmKey) throw new Error("Google Maps connector is not configured.");
+function googleMapsKey() {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) throw new Error("Google Maps API key is not configured.");
+  return key;
+}
+
+function googleHeaders(extra?: Record<string, string>) {
   return {
-    Authorization: `Bearer ${lovableKey}`,
-    "X-Connection-Api-Key": gmKey,
+    "X-Goog-Api-Key": googleMapsKey(),
     ...extra,
   };
 }
 
-async function handleGwError(res: Response) {
+async function handleGoogleError(res: Response) {
   const body = await res.text();
-  if (res.status === 403) {
-    try {
-      const parsed = JSON.parse(body);
-      const reason = parsed?.error?.details?.find((d: any) => d.reason)?.reason;
-      if (reason === "API_KEY_HTTP_REFERRER_BLOCKED") {
-        throw new Error(
-          'Google Maps server key is referrer-restricted. In Google Cloud Console, set the server key\'s application restrictions to "None" or "IP addresses".',
-        );
-      }
-      if (reason === "API_KEY_SERVICE_BLOCKED") {
-        throw new Error(
-          "Google Maps server key does not allow this API. Add it to the key's allowed-APIs list.",
-        );
-      }
-    } catch {}
-  }
   throw new Error(`Google Maps request failed [${res.status}]: ${body}`);
 }
 

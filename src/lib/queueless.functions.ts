@@ -80,32 +80,15 @@ function googleMapsKey() {
   return key;
 }
 
-function gwHeaders(extra?: Record<string, string>) {
+function googleHeaders(extra?: Record<string, string>) {
   return {
     "X-Goog-Api-Key": googleMapsKey(),
     ...extra,
   };
 }
 
-
-async function handleGwError(res: Response) {
+async function handleGoogleError(res: Response) {
   const body = await res.text();
-  if (res.status === 403) {
-    try {
-      const parsed = JSON.parse(body);
-      const reason = parsed?.error?.details?.find((d: any) => d.reason)?.reason;
-      if (reason === "API_KEY_HTTP_REFERRER_BLOCKED") {
-        throw new Error(
-          'Google Maps server key is referrer-restricted. In Google Cloud Console, set the server key\'s application restrictions to "None" or "IP addresses".',
-        );
-      }
-      if (reason === "API_KEY_SERVICE_BLOCKED") {
-        throw new Error(
-          "Google Maps server key does not allow this API. Add it to the key's allowed-APIs list.",
-        );
-      }
-    } catch {}
-  }
   throw new Error(`Google Maps request failed [${res.status}]: ${body}`);
 }
 
