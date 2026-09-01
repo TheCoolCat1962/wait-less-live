@@ -139,13 +139,14 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const bounds = `${NOLA_BOUNDS.south},${NOLA_BOUNDS.west}|${NOLA_BOUNDS.north},${NOLA_BOUNDS.east}`;
-    const url =
-      `${MAPS_BASE}/maps/api/geocode/json` +
-      `?address=${encodeURIComponent(data.query)}` +
-      `&components=country:US` +
-      `&bounds=${encodeURIComponent(bounds)}`;
-    const res = await fetch(url, { headers: gwHeaders() });
-    if (!res.ok) await handleGwError(res);
+    const params = new URLSearchParams({
+      address: data.query,
+      components: "country:US",
+      bounds,
+      key: googleMapsKey(),
+    });
+    const res = await fetch(`${MAPS_BASE}/maps/api/geocode/json?${params}`);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       status: string;
       results: Array<{
@@ -403,12 +404,9 @@ function pickAddressComponent(
 }
 
 function buildPhotoUrl(photoName: string | undefined): string | null {
-  if (!photoName) return null;
-  const browserKey = process.env.GOOGLE_MAPS_BROWSER_KEY;
-  if (!browserKey) return null;
-  // Browser key is authorized for Places API (New); safe to embed in <img src>.
-  // Cache at a card/hero-friendly width; the client rewrites maxWidthPx per use.
-  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&skipHttpRedirect=false&key=${browserKey}`;
+  if (!photoName || !/^places\/[^/]+\/photos\/[^/]+$/.test(photoName)) return null;
+  // The browser receives only a same-origin proxy URL. The server key stays private.
+  return `/api/google-place-photo?photo=${encodeURIComponent(photoName)}`;
 }
 
 // ---------------------------------------------------------------------------
