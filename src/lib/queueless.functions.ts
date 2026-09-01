@@ -157,7 +157,7 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const bounds = `${NOLA_BOUNDS.south},${NOLA_BOUNDS.west}|${NOLA_BOUNDS.north},${NOLA_BOUNDS.east}`;
     const url =
-      `${GATEWAY_URL}/maps/api/geocode/json` +
+      `${MAPS_BASE}/maps/api/geocode/json` +
       `?address=${encodeURIComponent(data.query)}` +
       `&components=country:US` +
       `&bounds=${encodeURIComponent(bounds)}`;
@@ -731,7 +731,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     // Google (e.g. a user in Covington should not see Covington businesses).
     if (!boxIntersectsNola(box)) return [];
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
+    const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
       method: "POST",
       headers: gwHeaders({
         "Content-Type": "application/json",
@@ -1075,7 +1075,7 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
       return withAggregatedWaits(supabase, stored);
     }
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchText`, {
+    const res = await fetch(`${PLACES_BASE}/places:searchText`, {
       method: "POST",
       headers: gwHeaders({
         "Content-Type": "application/json",
@@ -1371,7 +1371,7 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
 
     // Fetch from Google Places Details API
     const res = await fetch(
-      `${GATEWAY_URL}/places/v1/places/${data.placeId}`,
+      `${PLACES_BASE}/places/${data.placeId}`,
       {
         headers: gwHeaders({
           "X-Goog-FieldMask":
