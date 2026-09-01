@@ -82,12 +82,12 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const bounds = `${NOLA_BOUNDS.south},${NOLA_BOUNDS.west}|${NOLA_BOUNDS.north},${NOLA_BOUNDS.east}`;
     const url =
-      `${GATEWAY_URL}/maps/api/geocode/json` +
+      `${MAPS_BASE}/maps/api/geocode/json` +
       `?address=${encodeURIComponent(data.query)}` +
       `&components=country:US` +
       `&bounds=${encodeURIComponent(bounds)}`;
-    const res = await fetch(url, { headers: gwHeaders() });
-    if (!res.ok) await handleGwError(res);
+    const res = await fetch(url, { headers: googleHeaders() });
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       status: string;
       results: Array<{
@@ -330,9 +330,9 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const radiusMeters = Math.min(Math.round(data.radiusMiles * 1609.34), 50_000);
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
+    const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
       method: "POST",
-      headers: gwHeaders({
+      headers: googleHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
@@ -350,7 +350,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         },
       }),
     });
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       places?: Array<{
         id: string;
@@ -611,9 +611,9 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const supabase = getSupabase();
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchText`, {
+    const res = await fetch(`${PLACES_BASE}/places:searchText`, {
       method: "POST",
-      headers: gwHeaders({
+      headers: googleHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
@@ -629,7 +629,7 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
         },
       }),
     });
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       places?: Array<{
         id: string;

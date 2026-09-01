@@ -714,7 +714,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
 
     const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
       method: "POST",
-      headers: gwHeaders({
+      headers: googleHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
@@ -732,7 +732,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         },
       }),
     });
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       places?: Array<{
         id: string;
@@ -1058,7 +1058,7 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
 
     const res = await fetch(`${PLACES_BASE}/places:searchText`, {
       method: "POST",
-      headers: gwHeaders({
+      headers: googleHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
@@ -1074,7 +1074,7 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
         },
       }),
     });
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       places?: Array<{
         id: string;
@@ -1354,14 +1354,14 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
     const res = await fetch(
       `${PLACES_BASE}/places/${data.placeId}`,
       {
-        headers: gwHeaders({
+        headers: googleHeaders({
           "X-Goog-FieldMask":
             "id,displayName,formattedAddress,location,types,primaryType,addressComponents,internationalPhoneNumber,photos",
         }),
       },
     );
 
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = await res.json() as {
       id: string;
       displayName?: { text: string };

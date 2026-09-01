@@ -22,6 +22,7 @@ import { Route as SettingsPrivacyRouteImport } from './routes/settings/privacy'
 import { Route as SettingsAccountRouteImport } from './routes/settings/account'
 import { Route as BusinessIdRouteImport } from './routes/business.$id'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
+import { Route as ApiGooglePlacePhotoRouteImport } from './routes/api/google-place-photo'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -88,6 +89,11 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGooglePlacePhotoRoute = ApiGooglePlacePhotoRouteImport.update({
+  id: '/api/google-place-photo',
+  path: '/api/google-place-photo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
   '/sign-in': typeof SignInRoute
+  '/api/google-place-photo': typeof ApiGooglePlacePhotoRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
   '/settings/account': typeof SettingsAccountRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
   '/sign-in': typeof SignInRoute
+  '/api/google-place-photo': typeof ApiGooglePlacePhotoRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
   '/settings/account': typeof SettingsAccountRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/reputation': typeof ReputationRoute
   '/search': typeof SearchRoute
   '/sign-in': typeof SignInRoute
+  '/api/google-place-photo': typeof ApiGooglePlacePhotoRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/business/$id': typeof BusinessIdRoute
   '/settings/account': typeof SettingsAccountRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/reputation'
     | '/search'
     | '/sign-in'
+    | '/api/google-place-photo'
     | '/auth/callback'
     | '/business/$id'
     | '/settings/account'
@@ -159,6 +169,7 @@ export interface FileRouteTypes {
     | '/reputation'
     | '/search'
     | '/sign-in'
+    | '/api/google-place-photo'
     | '/auth/callback'
     | '/business/$id'
     | '/settings/account'
@@ -174,6 +185,7 @@ export interface FileRouteTypes {
     | '/reputation'
     | '/search'
     | '/sign-in'
+    | '/api/google-place-photo'
     | '/auth/callback'
     | '/business/$id'
     | '/settings/account'
@@ -190,6 +202,7 @@ export interface RootRouteChildren {
   ReputationRoute: typeof ReputationRoute
   SearchRoute: typeof SearchRoute
   SignInRoute: typeof SignInRoute
+  ApiGooglePlacePhotoRoute: typeof ApiGooglePlacePhotoRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BusinessIdRoute: typeof BusinessIdRoute
 }
@@ -287,6 +300,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/google-place-photo': {
+      id: '/api/google-place-photo'
+      path: '/api/google-place-photo'
+      fullPath: '/api/google-place-photo'
+      preLoaderRoute: typeof ApiGooglePlacePhotoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -315,6 +335,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReputationRoute: ReputationRoute,
   SearchRoute: SearchRoute,
   SignInRoute: SignInRoute,
+  ApiGooglePlacePhotoRoute: ApiGooglePlacePhotoRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BusinessIdRoute: BusinessIdRoute,
 }
