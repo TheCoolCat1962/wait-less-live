@@ -69,39 +69,26 @@ function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Google Maps Platform via connector gateway
+// Google Maps Platform — direct API calls (server-only key)
 // ---------------------------------------------------------------------------
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_maps";
+const PLACES_BASE = "https://places.googleapis.com/v1";
+const MAPS_BASE = "https://maps.googleapis.com";
 
-function gwHeaders(extra?: Record<string, string>) {
-  const lovableKey = process.env.LOVABLE_API_KEY;
-  const gmKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!lovableKey || !gmKey) throw new Error("Google Maps connector is not configured.");
+function googleMapsKey() {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) throw new Error("Google Maps API key is not configured.");
+  return key;
+}
+
+function googleHeaders(extra?: Record<string, string>) {
   return {
-    Authorization: `Bearer ${lovableKey}`,
-    "X-Connection-Api-Key": gmKey,
+    "X-Goog-Api-Key": googleMapsKey(),
     ...extra,
   };
 }
 
-async function handleGwError(res: Response) {
+async function handleGoogleError(res: Response) {
   const body = await res.text();
-  if (res.status === 403) {
-    try {
-      const parsed = JSON.parse(body);
-      const reason = parsed?.error?.details?.find((d: any) => d.reason)?.reason;
-      if (reason === "API_KEY_HTTP_REFERRER_BLOCKED") {
-        throw new Error(
-          'Google Maps server key is referrer-restricted. In Google Cloud Console, set the server key\'s application restrictions to "None" or "IP addresses".',
-        );
-      }
-      if (reason === "API_KEY_SERVICE_BLOCKED") {
-        throw new Error(
-          "Google Maps server key does not allow this API. Add it to the key's allowed-APIs list.",
-        );
-      }
-    } catch {}
-  }
   throw new Error(`Google Maps request failed [${res.status}]: ${body}`);
 }
 
@@ -152,13 +139,14 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const bounds = `${NOLA_BOUNDS.south},${NOLA_BOUNDS.west}|${NOLA_BOUNDS.north},${NOLA_BOUNDS.east}`;
-    const url =
-      `${GATEWAY_URL}/maps/api/geocode/json` +
-      `?address=${encodeURIComponent(data.query)}` +
-      `&components=country:US` +
-      `&bounds=${encodeURIComponent(bounds)}`;
-    const res = await fetch(url, { headers: gwHeaders() });
-    if (!res.ok) await handleGwError(res);
+    const params = new URLSearchParams({
+      address: data.query,
+      components: "country:US",
+      bounds,
+      key: googleMapsKey(),
+    });
+    const res = await fetch(`${MAPS_BASE}/maps/api/geocode/json?${params}`);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       status: string;
       results: Array<{
@@ -416,12 +404,9 @@ function pickAddressComponent(
 }
 
 function buildPhotoUrl(photoName: string | undefined): string | null {
-  if (!photoName) return null;
-  const browserKey = process.env.GOOGLE_MAPS_BROWSER_KEY;
-  if (!browserKey) return null;
-  // Browser key is authorized for Places API (New); safe to embed in <img src>.
-  // Cache at a card/hero-friendly width; the client rewrites maxWidthPx per use.
-  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&skipHttpRedirect=false&key=${browserKey}`;
+  if (!photoName || !/^places\/[^/]+\/photos\/[^/]+$/.test(photoName)) return null;
+  // The browser receives only a same-origin proxy URL. The server key stays private.
+  return `/api/google-place-photo?photo=${encodeURIComponent(photoName)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -727,9 +712,9 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     // Google (e.g. a user in Covington should not see Covington businesses).
     if (!boxIntersectsNola(box)) return [];
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
+    const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
       method: "POST",
-      headers: gwHeaders({
+      headers: googleHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
@@ -747,7 +732,7 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
         },
       }),
     });
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       places?: Array<{
         id: string;
@@ -1071,9 +1056,9 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
       return withAggregatedWaits(supabase, stored);
     }
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchText`, {
+    const res = await fetch(`${PLACES_BASE}/places:searchText`, {
       method: "POST",
-      headers: gwHeaders({
+      headers: googleHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
@@ -1089,7 +1074,7 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
         },
       }),
     });
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       places?: Array<{
         id: string;
@@ -1367,16 +1352,16 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
 
     // Fetch from Google Places Details API
     const res = await fetch(
-      `${GATEWAY_URL}/places/v1/places/${data.placeId}`,
+      `${PLACES_BASE}/places/${data.placeId}`,
       {
-        headers: gwHeaders({
+        headers: googleHeaders({
           "X-Goog-FieldMask":
             "id,displayName,formattedAddress,location,types,primaryType,addressComponents,internationalPhoneNumber,photos",
         }),
       },
     );
 
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = await res.json() as {
       id: string;
       displayName?: { text: string };
