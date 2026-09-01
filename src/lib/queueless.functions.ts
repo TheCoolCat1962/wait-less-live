@@ -69,20 +69,24 @@ function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Google Maps Platform via connector gateway
+// Google Maps Platform — direct API calls (server-only key)
 // ---------------------------------------------------------------------------
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_maps";
+const PLACES_BASE = "https://places.googleapis.com/v1";
+const MAPS_BASE = "https://maps.googleapis.com";
+
+function googleMapsKey() {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) throw new Error("Google Maps API key is not configured.");
+  return key;
+}
 
 function gwHeaders(extra?: Record<string, string>) {
-  const lovableKey = process.env.LOVABLE_API_KEY;
-  const gmKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!lovableKey || !gmKey) throw new Error("Google Maps connector is not configured.");
   return {
-    Authorization: `Bearer ${lovableKey}`,
-    "X-Connection-Api-Key": gmKey,
+    "X-Goog-Api-Key": googleMapsKey(),
     ...extra,
   };
 }
+
 
 async function handleGwError(res: Response) {
   const body = await res.text();
