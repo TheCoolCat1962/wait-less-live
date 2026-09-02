@@ -3,8 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 const PLACES_BASE = "https://places.googleapis.com/v1";
 
 function getGoogleMapsKey() {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
-  if (!key) throw new Error("Google Maps API key is not configured.");
+  const key = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  if (!key) throw new Error("Google Maps server API key is not configured.");
   return key;
 }
 
