@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-r
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { getAuthErrorMessage, isEmailConfirmationError } from "@/lib/auth-utils";
+import { z } from "zod";
 import {
   LogIn,
   Mail,
@@ -15,13 +16,18 @@ import {
   MailCheck,
 } from "lucide-react";
 
+const signInSearchSchema = z.object({
+  verified: z.string().optional(),
+});
+
 export const Route = createFileRoute("/sign-in")({
   component: SignInPage,
+  validateSearch: signInSearchSchema,
 });
 
 function SignInPage() {
   const navigate = useNavigate();
-  const searchParams = useSearch({ from: "/sign-in" }) as { verified?: boolean };
+  const searchParams = useSearch({ from: "/sign-in" });
   const { user, signIn, signUp, loading: authLoading, isAuthenticated } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");

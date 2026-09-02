@@ -253,7 +253,7 @@ function AuthCallbackPage() {
             <div className="mt-6 flex flex-col gap-3">
               <Link
                 to="/sign-in"
-                search={{ verified: "true" } as never}
+                search={{ verified: "true" }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-bold text-brand-foreground shadow-lg shadow-brand/30"
               >
                 <Mail className="size-4" />

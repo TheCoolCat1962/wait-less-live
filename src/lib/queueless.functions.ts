@@ -75,8 +75,8 @@ const PLACES_BASE = "https://places.googleapis.com/v1";
 const MAPS_BASE = "https://maps.googleapis.com";
 
 function googleMapsKey() {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
-  if (!key) throw new Error("Google Maps API key is not configured.");
+  const key = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  if (!key) throw new Error("Google Maps server API key is not configured.");
   return key;
 }
 
@@ -1221,9 +1221,9 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
     }
 
     // Call Google Places Autocomplete API
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
     if (!apiKey) {
-      console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_API_KEY is not configured");
+      console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_SERVER_API_KEY is not configured");
       return cachedSuggestions; // Fall back to cached results only
     }
     
