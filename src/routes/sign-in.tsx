@@ -27,7 +27,7 @@ export const Route = createFileRoute("/sign-in")({
 
 function SignInPage() {
   const navigate = useNavigate();
-  const searchParams = useSearch({ from: "/sign-in" }) as { verified?: boolean };
+  const searchParams = useSearch({ from: "/sign-in" });
   const { user, signIn, signUp, loading: authLoading, isAuthenticated } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
