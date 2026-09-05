@@ -1220,73 +1220,78 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
       return cachedSuggestions;
     }
 
-    // Call Google Places Autocomplete API
-    const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
-    if (!apiKey) {
+    // Call Places API (New) autocomplete
+    if (!process.env.GOOGLE_MAPS_SERVER_API_KEY) {
       console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_SERVER_API_KEY is not configured");
       return cachedSuggestions; // Fall back to cached results only
     }
-    
-    const params = new URLSearchParams({
-      input: data.query,
-      key: apiKey,
-      types: "establishment",
-      components: "country:us",
-    });
 
-    // Add location bias
+    const body: Record<string, unknown> = {
+      input: data.query,
+      includedPrimaryTypes: ["establishment"],
+      includedRegionCodes: ["us"],
+    };
     if (data.lat && data.lng) {
-      params.set("location", `${data.lat},${data.lng}`);
-      params.set("radius", "40000"); // ~25 miles
+      body.locationBias = {
+        circle: {
+          center: { latitude: data.lat, longitude: data.lng },
+          radius: 40000, // ~25 miles
+        },
+      };
     }
 
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
-    );
+    const res = await fetch(`${PLACES_BASE}/places:autocomplete`, {
+      method: "POST",
+      headers: googleHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    });
 
     if (!res.ok) {
-      console.error("Autocomplete API error:", res.status);
+      console.error("Autocomplete API error:", res.status, await res.text());
       return cachedSuggestions; // Fall back to cached results
     }
 
-    const json = await res.json() as {
-      predictions?: Array<{
-        place_id: string;
-        description: string;
-        structured_formatting: {
-          main_text: string;
-          main_text_matched_substrings: Array<{ offset: number; length: number }>;
-          secondary_text: string;
+    const json = (await res.json()) as {
+      suggestions?: Array<{
+        placePrediction?: {
+          placeId: string;
+          text?: { text?: string };
+          structuredFormat?: {
+            mainText?: { text?: string; matches?: Array<{ startOffset?: number; endOffset?: number }> };
+            secondaryText?: { text?: string };
+          };
+          types?: string[];
         };
-        types: string[];
-        terms?: Array<{ value: string }>;
       }>;
-      status: string;
     };
 
-    if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
-      console.error("Autocomplete status:", json.status);
-      return cachedSuggestions;
-    }
-
-    const suggestions: AutocompleteSuggestion[] = (json.predictions ?? [])
+    const suggestions: AutocompleteSuggestion[] = (json.suggestions ?? [])
+      .map((s) => s.placePrediction)
+      .filter((p): p is NonNullable<typeof p> => !!p?.placeId)
       .filter((p) => {
-        // Filter out generic/suspicious predictions
         const types = p.types ?? [];
-        return !types.includes("country") && 
+        return !types.includes("country") &&
                !types.includes("administrative_area_level_1") &&
                !types.includes("locality") &&
                !types.includes("postal_code");
       })
       .slice(0, 5)
-      .map((p) => ({
-        placeId: p.place_id,
-        description: p.description,
-        mainText: p.structured_formatting?.main_text ?? p.description,
-        secondaryText: p.structured_formatting?.secondary_text ?? "",
-        types: p.types ?? [],
-        matchedSubstrings: p.structured_formatting?.main_text_matched_substrings ?? [],
-      }));
+      .map((p) => {
+        const mainText = p.structuredFormat?.mainText?.text ?? p.text?.text ?? "";
+        const matches = (p.structuredFormat?.mainText?.matches ?? []).map((m) => ({
+          offset: m.startOffset ?? 0,
+          length: (m.endOffset ?? 0) - (m.startOffset ?? 0),
+        }));
+        return {
+          placeId: p.placeId,
+          description: p.text?.text ?? mainText,
+          mainText,
+          secondaryText: p.structuredFormat?.secondaryText?.text ?? "",
+          types: p.types ?? [],
+          matchedSubstrings: matches,
+        };
+      });
+
 
     // Merge cached results with API results, prioritizing cached (they have wait times)
     const merged = [...cachedSuggestions];
