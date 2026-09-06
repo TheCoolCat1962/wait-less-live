@@ -171,6 +171,19 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   });
 
 
+// Category groups used for nearby discovery (places where people wait in line).
+const NEARBY_TYPE_GROUPS: string[][] = [
+  ["supermarket", "grocery_store", "department_store", "discount_store", "warehouse_store", "wholesaler"],
+  ["restaurant", "cafe", "coffee_shop", "fast_food_restaurant", "bakery", "sandwich_shop"],
+  ["pharmacy", "drugstore", "bank", "atm", "post_office", "gas_station", "convenience_store"],
+  ["hospital", "urgent_care", "doctor", "dental_clinic", "medical_lab"],
+  ["movie_theater", "amusement_park", "tourist_attraction", "museum", "zoo", "aquarium"],
+  ["clothing_store", "shopping_mall", "electronics_store", "home_improvement_store", "hardware_store", "book_store"],
+  ["airport", "bus_station", "train_station", "transit_station", "car_rental", "car_wash"],
+  ["gym", "fitness_center", "barber_shop", "hair_salon", "nail_salon", "spa"],
+];
+
+
 // ---------------------------------------------------------------------------
 // Business type filtering — inclusive by default
 // ---------------------------------------------------------------------------
