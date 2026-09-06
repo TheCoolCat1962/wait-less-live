@@ -171,6 +171,19 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   });
 
 
+// Category groups used for nearby discovery (places where people wait in line).
+const NEARBY_TYPE_GROUPS: string[][] = [
+  ["supermarket", "grocery_store", "department_store", "discount_store", "warehouse_store", "wholesaler"],
+  ["restaurant", "cafe", "coffee_shop", "fast_food_restaurant", "bakery", "sandwich_shop"],
+  ["pharmacy", "drugstore", "bank", "atm", "post_office", "gas_station", "convenience_store"],
+  ["hospital", "doctor", "dental_clinic", "medical_lab"],
+  ["movie_theater", "amusement_park", "tourist_attraction", "museum", "zoo", "aquarium"],
+  ["clothing_store", "shopping_mall", "electronics_store", "home_improvement_store", "hardware_store", "book_store"],
+  ["airport", "bus_station", "train_station", "transit_station", "car_rental", "car_wash"],
+  ["gym", "fitness_center", "barber_shop", "hair_salon", "nail_salon", "spa"],
+];
+
+
 // ---------------------------------------------------------------------------
 // Business type filtering — inclusive by default
 // ---------------------------------------------------------------------------
@@ -712,48 +725,64 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     // Google (e.g. a user in Covington should not see Covington businesses).
     if (!boxIntersectsNola(box)) return [];
 
-    const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
-      method: "POST",
-      headers: googleHeaders({
-        "Content-Type": "application/json",
-        "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
-      }),
-      body: JSON.stringify({
-        maxResultCount: 20,
-        rankPreference: "DISTANCE",
-        // No includedTypes: Google returns all public-facing places, we then
-        // filter out non-public-facing categories client-side.
-        locationRestriction: {
-          circle: {
-            center: { latitude: data.lat, longitude: data.lng },
-            radius: radiusMeters,
-          },
-        },
-      }),
-    });
-    if (!res.ok) await handleGoogleError(res);
-    const json = (await res.json()) as {
-      places?: Array<{
-        id: string;
-        displayName?: { text: string };
-        formattedAddress?: string;
-        location?: { latitude: number; longitude: number };
-        types?: string[];
-        primaryType?: string;
-        addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
-        internationalPhoneNumber?: string;
-        photos?: Array<{ name: string }>;
-      }>;
+    // Nearby discovery: a single DISTANCE-ranked call with no type filter comes
+    // back full of non-public-facing listings registered at the exact search
+    // point (recruiters, consultants, LLCs), all of which we filter out — which
+    // is why the list ended up empty. Instead we fan out over the categories
+    // where customers actually wait, ranked by popularity.
+    type NearbyPlace = {
+      id: string;
+      displayName?: { text: string };
+      formattedAddress?: string;
+      location?: { latitude: number; longitude: number };
+      types?: string[];
+      primaryType?: string;
+      addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
+      internationalPhoneNumber?: string;
+      photos?: Array<{ name: string }>;
     };
-    const places = (json.places ?? []).filter(
-      (p) =>
-        p.id &&
-        p.location &&
-        p.displayName?.text &&
-        !isExcluded(p.primaryType, p.types) &&
-        isInNolaMetro(p.location.latitude, p.location.longitude),
+
+    const results = await Promise.all(
+      NEARBY_TYPE_GROUPS.map(async (includedTypes) => {
+        const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
+          method: "POST",
+          headers: googleHeaders({
+            "Content-Type": "application/json",
+            "X-Goog-FieldMask":
+              "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
+          }),
+          body: JSON.stringify({
+            maxResultCount: 20,
+            rankPreference: "POPULARITY",
+            includedTypes,
+            locationRestriction: {
+              circle: {
+                center: { latitude: data.lat, longitude: data.lng },
+                radius: radiusMeters,
+              },
+            },
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          console.error(`Google searchNearby failed [${res.status}]: ${body}`);
+          return [] as NearbyPlace[];
+        }
+        const json = (await res.json()) as { places?: NearbyPlace[] };
+        return json.places ?? [];
+      }),
     );
+
+    const seen = new Set<string>();
+    const places = results.flat().filter((p) => {
+      if (!p.id || !p.location || !p.displayName?.text) return false;
+      if (seen.has(p.id)) return false;
+      if (isExcluded(p.primaryType, p.types)) return false;
+      if (!isInNolaMetro(p.location.latitude, p.location.longitude)) return false;
+      seen.add(p.id);
+      return true;
+    });
+
 
     const rows = places.map((p) => {
       const comps = (p.addressComponents ?? []).map((c) => ({
