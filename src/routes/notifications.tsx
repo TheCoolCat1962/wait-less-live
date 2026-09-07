@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
 import {
   Bell,
   BellOff,
@@ -12,111 +11,55 @@ import {
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/queueless/AppShell";
+import { useNotifications } from "@/lib/alerts";
+import { formatDistanceToNow } from "date-fns";
 
 export const Route = createFileRoute("/notifications")({
   component: NotificationsPage,
 });
 
-type Notification = {
+type NotificationType = "wait_alert" | "report_confirmed" | "badge_earned" | "system";
+
+interface NotificationItem {
   id: string;
-  type: "wait_update" | "favorite_available" | "report_confirmed" | "badge_earned";
+  type: NotificationType;
   title: string;
-  message: string;
-  businessName?: string;
-  time: string;
+  body: string;
+  business_id?: string;
   read: boolean;
-  createdAt: Date;
-};
+  created_at: string;
+}
 
-// Mock notifications for demo purposes
-const mockNotifications: Notification[] = [
-  {
-    id: "1",
-    type: "wait_update",
-    title: "Wait time updated",
-    message: "Café Du Monde now has a 15 minute wait",
-    businessName: "Café Du Monde",
-    time: "5 min ago",
-    read: false,
-    createdAt: new Date(Date.now() - 5 * 60 * 1000),
-  },
-  {
-    id: "2",
-    type: "favorite_available",
-    title: "Your favorite has low wait",
-    message: "Parker's Bar & Grill is reporting no wait!",
-    businessName: "Parker's Bar & Grill",
-    time: "1 hour ago",
-    read: false,
-    createdAt: new Date(Date.now() - 60 * 60 * 1000),
-  },
-  {
-    id: "3",
-    type: "report_confirmed",
-    title: "Report confirmed",
-    message: "Your wait time report was verified by another user",
-    time: "3 hours ago",
-    read: true,
-    createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
-  },
-  {
-    id: "4",
-    type: "badge_earned",
-    title: "Badge earned!",
-    message: "You earned the 'Early Bird' badge for reporting before 8 AM",
-    time: "1 day ago",
-    read: true,
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-  },
-];
-
-function getNotificationIcon(type: Notification["type"]) {
+function getNotificationIcon(type: NotificationType) {
   switch (type) {
-    case "wait_update":
-      return Clock;
-    case "favorite_available":
-      return Star;
+    case "wait_alert":
+      return Bell;
     case "report_confirmed":
       return Check;
     case "badge_earned":
-      return Bell;
+      return Star;
+    case "system":
     default:
       return Bell;
   }
 }
 
+function formatTime(dateString: string): string {
+  try {
+    return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+  } catch {
+    return "Unknown";
+  }
+}
+
 function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  const markAllAsRead = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, read: true }))
-      );
-    } catch (err) {
-      setError("Failed to mark notifications as read");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const markAsRead = async (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-  };
-
-  const deleteNotification = async (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
+  const {
+    notifications,
+    unreadCount,
+    isLoading,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications();
 
   return (
     <AppShell>
@@ -132,10 +75,10 @@ function NotificationsPage() {
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              disabled={loading}
+              disabled={isLoading}
               className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
             >
-              {loading ? (
+              {isLoading ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
                 <Check className="size-3.5" />
@@ -146,36 +89,36 @@ function NotificationsPage() {
         </div>
       </header>
 
-      {/* Error State */}
-      {error && (
-        <div className="mx-5 mt-4 rounded-xl border border-danger/30 bg-danger/10 p-4">
-          <p className="text-sm font-medium text-danger">{error}</p>
+      {/* Loading State */}
+      {isLoading && notifications.length === 0 && (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Loading notifications...
         </div>
       )}
 
       {/* Content */}
       <main className="px-5 py-4">
-        {notifications.length === 0 ? (
+        {notifications.length === 0 && !isLoading ? (
           <div className="flex flex-col items-center py-16 text-center">
             <div className="grid size-14 place-items-center rounded-2xl bg-surface-muted text-muted-foreground">
               <BellOff className="size-6" />
             </div>
             <h2 className="mt-4 text-lg font-extrabold">No notifications yet</h2>
             <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              When you favorite places or submit reports, you'll get notified about
-              updates here.
+              When you create wait time alerts and the conditions are met, you'll get notified here.
             </p>
             <Link
               to="/"
               className="mt-6 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground shadow-lg shadow-brand/30"
             >
-              Browse nearby
+              Find places to monitor
             </Link>
           </div>
         ) : (
           <div className="space-y-2">
-            {notifications.map((notification) => {
-              const Icon = getNotificationIcon(notification.type);
+            {notifications.map((notification: any) => {
+              const Icon = getNotificationIcon(notification.type as NotificationType);
               return (
                 <div
                   key={notification.id}
@@ -210,22 +153,29 @@ function NotificationsPage() {
                         )}
                       </div>
                       <p className="mt-0.5 text-sm text-muted-foreground">
-                        {notification.message}
+                        {notification.body}
                       </p>
                       <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
                         <Clock className="size-3" />
-                        <span>{notification.time}</span>
-                        {notification.businessName && (
+                        <span>{formatTime(notification.created_at)}</span>
+                        {notification.business_id && (
                           <>
                             <span>·</span>
                             <MapPin className="size-3" />
-                            <span>{notification.businessName}</span>
+                            <span>View business</span>
                           </>
                         )}
                       </div>
                     </div>
                   </div>
-                  <ChevronRight className="absolute bottom-4 right-4 size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  {notification.business_id && (
+                    <Link
+                      to={`/business/${notification.business_id}`}
+                      className="absolute bottom-4 right-4 opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <ChevronRight className="size-4 text-muted-foreground" />
+                    </Link>
+                  )}
                 </div>
               );
             })}
@@ -235,45 +185,36 @@ function NotificationsPage() {
         {/* Notification Settings Info */}
         <div className="mt-8 space-y-3">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            Notification preferences
+            About wait time alerts
           </p>
           <div className="rounded-2xl border border-border bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">Wait time alerts</p>
-                <p className="text-xs text-muted-foreground">
-                  Get notified when wait times change
-                </p>
+            <div className="flex items-start gap-3">
+              <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand">
+                <Bell className="size-4" />
               </div>
-              <button className="relative h-6 w-11 rounded-full bg-brand transition-colors">
-                <span className="absolute right-1 top-1 size-4 rounded-full bg-white shadow" />
-              </button>
+              <div>
+                <p className="text-sm font-semibold">How alerts work</p>
+                <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                  <li>• Favorite a business on any business page</li>
+                  <li>• Tap the bell icon to create an alert</li>
+                  <li>• Choose your wait time threshold</li>
+                  <li>• Get notified when wait drops below it</li>
+                </ul>
+              </div>
             </div>
           </div>
           <div className="rounded-2xl border border-border bg-surface p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start gap-3">
+              <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-safe/10 text-safe">
+                <Check className="size-4" />
+              </div>
               <div>
-                <p className="text-sm font-semibold">Favorite updates</p>
-                <p className="text-xs text-muted-foreground">
-                  Alerts when favorites have low wait
+                <p className="text-sm font-semibold">Anti-spam measures</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  To prevent notification fatigue, we limit alerts to one notification per alert 
+                  per 30 minutes. Alerts can be paused or deleted at any time.
                 </p>
               </div>
-              <button className="relative h-6 w-11 rounded-full bg-brand transition-colors">
-                <span className="absolute right-1 top-1 size-4 rounded-full bg-white shadow" />
-              </button>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-border bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">Report feedback</p>
-                <p className="text-xs text-muted-foreground">
-                  Confirmation when reports are verified
-                </p>
-              </div>
-              <button className="relative h-6 w-11 rounded-full bg-surface-muted transition-colors">
-                <span className="absolute left-1 top-1 size-4 rounded-full bg-muted-foreground shadow" />
-              </button>
             </div>
           </div>
         </div>
