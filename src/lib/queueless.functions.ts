@@ -69,39 +69,26 @@ function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Google Maps Platform via connector gateway
+// Google Maps Platform — direct API calls (server-only key)
 // ---------------------------------------------------------------------------
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_maps";
+const PLACES_BASE = "https://places.googleapis.com/v1";
+const MAPS_BASE = "https://maps.googleapis.com";
 
-function gwHeaders(extra?: Record<string, string>) {
-  const lovableKey = process.env.LOVABLE_API_KEY;
-  const gmKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!lovableKey || !gmKey) throw new Error("Google Maps connector is not configured.");
+function googleMapsKey() {
+  const key = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  if (!key) throw new Error("Google Maps server API key is not configured.");
+  return key;
+}
+
+function googleHeaders(extra?: Record<string, string>) {
   return {
-    Authorization: `Bearer ${lovableKey}`,
-    "X-Connection-Api-Key": gmKey,
+    "X-Goog-Api-Key": googleMapsKey(),
     ...extra,
   };
 }
 
-async function handleGwError(res: Response) {
+async function handleGoogleError(res: Response) {
   const body = await res.text();
-  if (res.status === 403) {
-    try {
-      const parsed = JSON.parse(body);
-      const reason = parsed?.error?.details?.find((d: any) => d.reason)?.reason;
-      if (reason === "API_KEY_HTTP_REFERRER_BLOCKED") {
-        throw new Error(
-          'Google Maps server key is referrer-restricted. In Google Cloud Console, set the server key\'s application restrictions to "None" or "IP addresses".',
-        );
-      }
-      if (reason === "API_KEY_SERVICE_BLOCKED") {
-        throw new Error(
-          "Google Maps server key does not allow this API. Add it to the key's allowed-APIs list.",
-        );
-      }
-    } catch {}
-  }
   throw new Error(`Google Maps request failed [${res.status}]: ${body}`);
 }
 
@@ -152,13 +139,14 @@ export const geocodeQuery = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const bounds = `${NOLA_BOUNDS.south},${NOLA_BOUNDS.west}|${NOLA_BOUNDS.north},${NOLA_BOUNDS.east}`;
-    const url =
-      `${GATEWAY_URL}/maps/api/geocode/json` +
-      `?address=${encodeURIComponent(data.query)}` +
-      `&components=country:US` +
-      `&bounds=${encodeURIComponent(bounds)}`;
-    const res = await fetch(url, { headers: gwHeaders() });
-    if (!res.ok) await handleGwError(res);
+    const params = new URLSearchParams({
+      address: data.query,
+      components: "country:US",
+      bounds,
+      key: googleMapsKey(),
+    });
+    const res = await fetch(`${MAPS_BASE}/maps/api/geocode/json?${params}`);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       status: string;
       results: Array<{
@@ -181,6 +169,19 @@ export const geocodeQuery = createServerFn({ method: "POST" })
       inNolaMetro: isInNolaMetro(r.geometry.location.lat, r.geometry.location.lng),
     };
   });
+
+
+// Category groups used for nearby discovery (places where people wait in line).
+const NEARBY_TYPE_GROUPS: string[][] = [
+  ["supermarket", "grocery_store", "department_store", "discount_store", "warehouse_store", "wholesaler"],
+  ["restaurant", "cafe", "coffee_shop", "fast_food_restaurant", "bakery", "sandwich_shop"],
+  ["pharmacy", "drugstore", "bank", "atm", "post_office", "gas_station", "convenience_store"],
+  ["hospital", "doctor", "dental_clinic", "medical_lab"],
+  ["movie_theater", "amusement_park", "tourist_attraction", "museum", "zoo", "aquarium"],
+  ["clothing_store", "shopping_mall", "electronics_store", "home_improvement_store", "hardware_store", "book_store"],
+  ["airport", "bus_station", "train_station", "transit_station", "car_rental", "car_wash"],
+  ["gym", "fitness_center", "barber_shop", "hair_salon", "nail_salon", "spa"],
+];
 
 
 // ---------------------------------------------------------------------------
@@ -416,12 +417,9 @@ function pickAddressComponent(
 }
 
 function buildPhotoUrl(photoName: string | undefined): string | null {
-  if (!photoName) return null;
-  const browserKey = process.env.GOOGLE_MAPS_BROWSER_KEY;
-  if (!browserKey) return null;
-  // Browser key is authorized for Places API (New); safe to embed in <img src>.
-  // Cache at a card/hero-friendly width; the client rewrites maxWidthPx per use.
-  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&skipHttpRedirect=false&key=${browserKey}`;
+  if (!photoName || !/^places\/[^/]+\/photos\/[^/]+$/.test(photoName)) return null;
+  // The browser receives only a same-origin proxy URL. The server key stays private.
+  return `/api/google-place-photo?photo=${encodeURIComponent(photoName)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -727,48 +725,64 @@ export const fetchNearbyBusinesses = createServerFn({ method: "POST" })
     // Google (e.g. a user in Covington should not see Covington businesses).
     if (!boxIntersectsNola(box)) return [];
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchNearby`, {
-      method: "POST",
-      headers: gwHeaders({
-        "Content-Type": "application/json",
-        "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
-      }),
-      body: JSON.stringify({
-        maxResultCount: 20,
-        rankPreference: "DISTANCE",
-        // No includedTypes: Google returns all public-facing places, we then
-        // filter out non-public-facing categories client-side.
-        locationRestriction: {
-          circle: {
-            center: { latitude: data.lat, longitude: data.lng },
-            radius: radiusMeters,
-          },
-        },
-      }),
-    });
-    if (!res.ok) await handleGwError(res);
-    const json = (await res.json()) as {
-      places?: Array<{
-        id: string;
-        displayName?: { text: string };
-        formattedAddress?: string;
-        location?: { latitude: number; longitude: number };
-        types?: string[];
-        primaryType?: string;
-        addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
-        internationalPhoneNumber?: string;
-        photos?: Array<{ name: string }>;
-      }>;
+    // Nearby discovery: a single DISTANCE-ranked call with no type filter comes
+    // back full of non-public-facing listings registered at the exact search
+    // point (recruiters, consultants, LLCs), all of which we filter out — which
+    // is why the list ended up empty. Instead we fan out over the categories
+    // where customers actually wait, ranked by popularity.
+    type NearbyPlace = {
+      id: string;
+      displayName?: { text: string };
+      formattedAddress?: string;
+      location?: { latitude: number; longitude: number };
+      types?: string[];
+      primaryType?: string;
+      addressComponents?: Array<{ types: string[]; shortText?: string; longText?: string }>;
+      internationalPhoneNumber?: string;
+      photos?: Array<{ name: string }>;
     };
-    const places = (json.places ?? []).filter(
-      (p) =>
-        p.id &&
-        p.location &&
-        p.displayName?.text &&
-        !isExcluded(p.primaryType, p.types) &&
-        isInNolaMetro(p.location.latitude, p.location.longitude),
+
+    const results = await Promise.all(
+      NEARBY_TYPE_GROUPS.map(async (includedTypes) => {
+        const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
+          method: "POST",
+          headers: googleHeaders({
+            "Content-Type": "application/json",
+            "X-Goog-FieldMask":
+              "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
+          }),
+          body: JSON.stringify({
+            maxResultCount: 20,
+            rankPreference: "POPULARITY",
+            includedTypes,
+            locationRestriction: {
+              circle: {
+                center: { latitude: data.lat, longitude: data.lng },
+                radius: radiusMeters,
+              },
+            },
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          console.error(`Google searchNearby failed [${res.status}]: ${body}`);
+          return [] as NearbyPlace[];
+        }
+        const json = (await res.json()) as { places?: NearbyPlace[] };
+        return json.places ?? [];
+      }),
     );
+
+    const seen = new Set<string>();
+    const places = results.flat().filter((p) => {
+      if (!p.id || !p.location || !p.displayName?.text) return false;
+      if (seen.has(p.id)) return false;
+      if (isExcluded(p.primaryType, p.types)) return false;
+      if (!isInNolaMetro(p.location.latitude, p.location.longitude)) return false;
+      seen.add(p.id);
+      return true;
+    });
+
 
     const rows = places.map((p) => {
       const comps = (p.addressComponents ?? []).map((c) => ({
@@ -1089,9 +1103,9 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
       return withAggregatedWaits(supabase, stored);
     }
 
-    const res = await fetch(`${GATEWAY_URL}/places/v1/places:searchText`, {
+    const res = await fetch(`${PLACES_BASE}/places:searchText`, {
       method: "POST",
-      headers: gwHeaders({
+      headers: googleHeaders({
         "Content-Type": "application/json",
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.addressComponents,places.internationalPhoneNumber,places.photos",
@@ -1107,7 +1121,7 @@ export const searchBusinessesByText = createServerFn({ method: "POST" })
         },
       }),
     });
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = (await res.json()) as {
       places?: Array<{
         id: string;
@@ -1253,73 +1267,78 @@ export const getAutocompleteSuggestions = createServerFn({ method: "POST" })
       return cachedSuggestions;
     }
 
-    // Call Google Places Autocomplete API
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_API_KEY is not configured");
+    // Call Places API (New) autocomplete
+    if (!process.env.GOOGLE_MAPS_SERVER_API_KEY) {
+      console.error("[getAutocompleteSuggestions] GOOGLE_MAPS_SERVER_API_KEY is not configured");
       return cachedSuggestions; // Fall back to cached results only
     }
-    
-    const params = new URLSearchParams({
-      input: data.query,
-      key: apiKey,
-      types: "establishment",
-      components: "country:us",
-    });
 
-    // Add location bias
+    const body: Record<string, unknown> = {
+      input: data.query,
+      includedPrimaryTypes: ["establishment"],
+      includedRegionCodes: ["us"],
+    };
     if (data.lat && data.lng) {
-      params.set("location", `${data.lat},${data.lng}`);
-      params.set("radius", "40000"); // ~25 miles
+      body.locationBias = {
+        circle: {
+          center: { latitude: data.lat, longitude: data.lng },
+          radius: 40000, // ~25 miles
+        },
+      };
     }
 
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
-    );
+    const res = await fetch(`${PLACES_BASE}/places:autocomplete`, {
+      method: "POST",
+      headers: googleHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    });
 
     if (!res.ok) {
-      console.error("Autocomplete API error:", res.status);
+      console.error("Autocomplete API error:", res.status, await res.text());
       return cachedSuggestions; // Fall back to cached results
     }
 
-    const json = await res.json() as {
-      predictions?: Array<{
-        place_id: string;
-        description: string;
-        structured_formatting: {
-          main_text: string;
-          main_text_matched_substrings: Array<{ offset: number; length: number }>;
-          secondary_text: string;
+    const json = (await res.json()) as {
+      suggestions?: Array<{
+        placePrediction?: {
+          placeId: string;
+          text?: { text?: string };
+          structuredFormat?: {
+            mainText?: { text?: string; matches?: Array<{ startOffset?: number; endOffset?: number }> };
+            secondaryText?: { text?: string };
+          };
+          types?: string[];
         };
-        types: string[];
-        terms?: Array<{ value: string }>;
       }>;
-      status: string;
     };
 
-    if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
-      console.error("Autocomplete status:", json.status);
-      return cachedSuggestions;
-    }
-
-    const suggestions: AutocompleteSuggestion[] = (json.predictions ?? [])
+    const suggestions: AutocompleteSuggestion[] = (json.suggestions ?? [])
+      .map((s) => s.placePrediction)
+      .filter((p): p is NonNullable<typeof p> => !!p?.placeId)
       .filter((p) => {
-        // Filter out generic/suspicious predictions
         const types = p.types ?? [];
-        return !types.includes("country") && 
+        return !types.includes("country") &&
                !types.includes("administrative_area_level_1") &&
                !types.includes("locality") &&
                !types.includes("postal_code");
       })
       .slice(0, 5)
-      .map((p) => ({
-        placeId: p.place_id,
-        description: p.description,
-        mainText: p.structured_formatting?.main_text ?? p.description,
-        secondaryText: p.structured_formatting?.secondary_text ?? "",
-        types: p.types ?? [],
-        matchedSubstrings: p.structured_formatting?.main_text_matched_substrings ?? [],
-      }));
+      .map((p) => {
+        const mainText = p.structuredFormat?.mainText?.text ?? p.text?.text ?? "";
+        const matches = (p.structuredFormat?.mainText?.matches ?? []).map((m) => ({
+          offset: m.startOffset ?? 0,
+          length: (m.endOffset ?? 0) - (m.startOffset ?? 0),
+        }));
+        return {
+          placeId: p.placeId,
+          description: p.text?.text ?? mainText,
+          mainText,
+          secondaryText: p.structuredFormat?.secondaryText?.text ?? "",
+          types: p.types ?? [],
+          matchedSubstrings: matches,
+        };
+      });
+
 
     // Merge cached results with API results, prioritizing cached (they have wait times)
     const merged = [...cachedSuggestions];
@@ -1385,16 +1404,16 @@ export const getPlaceDetails = createServerFn({ method: "POST" })
 
     // Fetch from Google Places Details API
     const res = await fetch(
-      `${GATEWAY_URL}/places/v1/places/${data.placeId}`,
+      `${PLACES_BASE}/places/${data.placeId}`,
       {
-        headers: gwHeaders({
+        headers: googleHeaders({
           "X-Goog-FieldMask":
             "id,displayName,formattedAddress,location,types,primaryType,addressComponents,internationalPhoneNumber,photos",
         }),
       },
     );
 
-    if (!res.ok) await handleGwError(res);
+    if (!res.ok) await handleGoogleError(res);
     const json = await res.json() as {
       id: string;
       displayName?: { text: string };
