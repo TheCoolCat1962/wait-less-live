@@ -144,10 +144,13 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, []); // No dependencies - reads from ref
 
   const setManualLocation = useCallback(async (query: string) => {
+    console.log("[Location] setManualLocation called with:", query);
     setStatus("prompting");
     setError(null);
     try {
+      console.log("[Location] Calling geocodeQuery...");
       const resolved = await geocodeQuery({ data: { query } });
+      console.log("[Location] geocodeQuery result:", resolved);
       const loc: UserLocation = {
         coords: { lat: resolved.lat, lng: resolved.lng },
         label: resolved.label,
@@ -155,8 +158,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       };
       writeStored(loc);
       setStatus("ready");
+      console.log("[Location] Location set, status: ready");
       return true;
     } catch (e) {
+      console.error("[Location] geocodeQuery error:", e);
       setError(e instanceof Error ? e.message : "Could not find that location.");
       setStatus("idle");
       return false;
